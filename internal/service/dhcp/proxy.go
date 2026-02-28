@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"syscall"
 
 	"bootforge/internal/domain"
 	"bootforge/internal/server"
@@ -16,24 +17,26 @@ import (
 // ProxyServer listens for DHCP Discover/Request messages and responds
 // with PXE boot information without assigning IP addresses.
 type ProxyServer struct {
-	cfg      domain.DHCPProxyConfig
-	blCfg    domain.BootloaderConfig
-	serverIP net.IP
-	srv      *server.Server
-	logger   *slog.Logger
-	conn67   *net.UDPConn
-	conn4011 *net.UDPConn
-	cancel   context.CancelFunc
+	cfg       domain.DHCPProxyConfig
+	blCfg     domain.BootloaderConfig
+	serverIP  net.IP
+	ifaceName string
+	srv       *server.Server
+	logger    *slog.Logger
+	conn67    *net.UDPConn
+	conn4011  *net.UDPConn
+	cancel    context.CancelFunc
 }
 
 // NewProxyServer creates a new DHCP proxy server.
-func NewProxyServer(cfg domain.DHCPProxyConfig, blCfg domain.BootloaderConfig, serverIP net.IP, srv *server.Server, logger *slog.Logger) *ProxyServer {
+func NewProxyServer(cfg domain.DHCPProxyConfig, blCfg domain.BootloaderConfig, serverIP net.IP, ifaceName string, srv *server.Server, logger *slog.Logger) *ProxyServer {
 	return &ProxyServer{
-		cfg:      cfg,
-		blCfg:    blCfg,
-		serverIP: serverIP,
-		srv:      srv,
-		logger:   logger,
+		cfg:       cfg,
+		blCfg:     blCfg,
+		serverIP:  serverIP,
+		ifaceName: ifaceName,
+		srv:       srv,
+		logger:    logger,
 	}
 }
 
@@ -45,16 +48,14 @@ func (p *ProxyServer) Start(ctx context.Context) error {
 	ctx, p.cancel = context.WithCancel(ctx)
 
 	// Listen on port 67 for DHCP Discover.
-	addr67 := &net.UDPAddr{Port: p.cfg.Port}
-	conn67, err := net.ListenUDP("udp4", addr67)
+	conn67, err := p.listenUDP(ctx, p.cfg.Port)
 	if err != nil {
 		return fmt.Errorf("listening on port %d: %w", p.cfg.Port, err)
 	}
 	p.conn67 = conn67
 
 	// Listen on port 4011 for PXE proxy requests.
-	addr4011 := &net.UDPAddr{Port: p.cfg.ProxyPort}
-	conn4011, err := net.ListenUDP("udp4", addr4011)
+	conn4011, err := p.listenUDP(ctx, p.cfg.ProxyPort)
 	if err != nil {
 		conn67.Close()
 		return fmt.Errorf("listening on port %d: %w", p.cfg.ProxyPort, err)
@@ -65,10 +66,42 @@ func (p *ProxyServer) Start(ctx context.Context) error {
 	go p.serve(ctx, conn4011, "port-4011")
 
 	p.logger.Info("DHCP proxy started",
+		"interface", p.ifaceName,
 		"port", p.cfg.Port,
 		"proxy_port", p.cfg.ProxyPort,
 	)
 	return nil
+}
+
+// listenUDP creates a UDP socket bound to the configured interface via
+// SO_BINDTODEVICE. This ensures DHCP broadcast packets arriving on the
+// interface are delivered to our socket.
+func (p *ProxyServer) listenUDP(ctx context.Context, port int) (*net.UDPConn, error) {
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var opErr error
+			if err := c.Control(func(fd uintptr) {
+				opErr = syscall.SetsockoptString(
+					int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, p.ifaceName)
+			}); err != nil {
+				return err
+			}
+			return opErr
+		},
+	}
+
+	pc, err := lc.ListenPacket(ctx, "udp4", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return nil, err
+	}
+
+	conn, ok := pc.(*net.UDPConn)
+	if !ok {
+		pc.Close()
+		return nil, fmt.Errorf("unexpected connection type for udp4")
+	}
+
+	return conn, nil
 }
 
 // Stop shuts down the DHCP proxy server.
