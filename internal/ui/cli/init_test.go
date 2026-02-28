@@ -10,8 +10,11 @@ func TestInitCreatesConfig(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "bootforge-test")
 
-	// Set the flag and run.
-	initDir = target
+	// Set the global config dir flag and run.
+	oldCfgDir := cfgDir
+	cfgDir = target
+	defer func() { cfgDir = oldCfgDir }()
+
 	err := runInit(nil, nil)
 	if err != nil {
 		t.Fatalf("runInit() error = %v", err)
@@ -51,7 +54,10 @@ func TestInitFailsOnExistingDir(t *testing.T) {
 	// Create a file in the directory to make it non-empty.
 	os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("hello"), 0644)
 
-	initDir = dir
+	oldCfgDir := cfgDir
+	cfgDir = dir
+	defer func() { cfgDir = oldCfgDir }()
+
 	err := runInit(nil, nil)
 	if err == nil {
 		t.Error("runInit() should fail on non-empty directory")

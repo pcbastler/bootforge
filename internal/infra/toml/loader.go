@@ -14,6 +14,11 @@ import (
 // into a single FullConfig. It performs cross-file validation including
 // duplicate MAC/menu name detection and reference integrity.
 func LoadDir(dir string) (*domain.FullConfig, error) {
+	// Give a clear error if the user passes a file path instead of a directory.
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		return nil, fmt.Errorf("%s is a file, not a directory — pass the directory containing your .toml files (e.g. %s)", dir, filepath.Dir(dir))
+	}
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading config directory %s: %w", dir, err)

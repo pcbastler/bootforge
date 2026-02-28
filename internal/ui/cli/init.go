@@ -8,22 +8,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var initDir string
-
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize a new configuration directory",
-	Long:  "Create a new configuration directory with example configuration files.",
+	Long:  "Create a new configuration directory with example configuration files.\nUses the --config flag to set the target directory.",
 	RunE:  runInit,
 }
 
 func init() {
-	initCmd.Flags().StringVar(&initDir, "dir", "", "Directory to initialize (required)")
-	initCmd.MarkFlagRequired("dir")
 	rootCmd.AddCommand(initCmd)
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	initDir := cfgDir
+
 	// Check if directory already exists and has content.
 	entries, err := os.ReadDir(initDir)
 	if err == nil && len(entries) > 0 {
