@@ -1,0 +1,15 @@
+#!ipxe
+
+menu Bootforge Boot Menu
+
+item local-disk Boot from local disk
+
+choose selected || goto failed
+
+:local-disk
+exit 0
+
+:failed
+echo Boot failed, retrying in 5 seconds...
+sleep 5
+goto start

@@ -1,0 +1,7 @@
+#!ipxe
+
+kernel http://192.168.1.10:8080/installers/win11/wimboot
+initrd http://192.168.1.10:8080/installers/win11/BCD
+initrd http://192.168.1.10:8080/installers/win11/boot.sdi
+initrd http://192.168.1.10:8080/installers/win11/boot.wim
+boot
