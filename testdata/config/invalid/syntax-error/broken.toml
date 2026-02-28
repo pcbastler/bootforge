@@ -1,0 +1,3 @@
+[server
+interface = "eth0"
+this is not valid toml !!!

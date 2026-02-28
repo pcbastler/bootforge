@@ -1,0 +1,14 @@
+[[menu]]
+name = "rescue"
+label = "Rescue System"
+type = "live"
+
+[menu.boot]
+kernel = "vmlinuz"
+
+[[client]]
+mac = "*"
+name = "default"
+
+[client.menu]
+entries = ["rescue"]

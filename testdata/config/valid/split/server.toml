@@ -1,0 +1,21 @@
+[server]
+interface = "eth0"
+data_dir = "/etc/bootforge/data"
+
+[dhcp_proxy]
+port = 67
+proxy_port = 4011
+
+[tftp]
+port = 69
+
+[http]
+port = 8080
+
+[bootloader]
+dir = "bootloader/"
+uefi_x64 = "ipxe.efi"
+uefi_x86 = "ipxe-x86.efi"
+bios = "undionly.kpxe"
+arm64 = "ipxe-arm64.efi"
+chain_url = "http://${server_ip}:${http_port}/boot/${mac}/menu.ipxe"

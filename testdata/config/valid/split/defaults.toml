@@ -1,0 +1,8 @@
+[[client]]
+mac = "*"
+name = "default"
+
+[client.menu]
+entries = ["rescue", "local-disk"]
+default = "local-disk"
+timeout = 10

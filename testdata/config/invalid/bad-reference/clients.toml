@@ -1,0 +1,6 @@
+[[client]]
+mac = "aa:bb:cc:dd:ee:01"
+name = "workstation-01"
+
+[client.menu]
+entries = ["rescue", "nonexistent"]
