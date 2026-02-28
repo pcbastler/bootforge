@@ -1,0 +1,68 @@
+# Minimal all-in-one Bootforge configuration.
+
+[server]
+interface = "eth0"
+data_dir = "/etc/bootforge/data"
+
+[server.logging]
+level = "info"
+format = "pretty"
+
+[dhcp_proxy]
+enabled = true
+port = 67
+proxy_port = 4011
+
+[tftp]
+enabled = true
+port = 69
+
+[http]
+enabled = true
+port = 8080
+
+[bootloader]
+dir = "bootloader/"
+uefi_x64 = "ipxe.efi"
+uefi_x86 = "ipxe-x86.efi"
+bios = "undionly.kpxe"
+arm64 = "ipxe-arm64.efi"
+chain_url = "http://${server_ip}:${http_port}/boot/${mac}/menu.ipxe"
+
+[[menu]]
+name = "rescue"
+label = "Rescue System"
+type = "live"
+
+[menu.boot]
+kernel = "vmlinuz"
+initrd = "initrd"
+cmdline = "boot=live"
+
+[menu.http]
+files = "tools/rescue/"
+path = "/tools/rescue/"
+
+[[menu]]
+name = "local-disk"
+label = "Boot from local disk"
+type = "exit"
+
+[[client]]
+mac = "aa:bb:cc:dd:ee:01"
+name = "workstation-01"
+enabled = true
+
+[client.menu]
+entries = ["rescue", "local-disk"]
+default = "rescue"
+timeout = 30
+
+[[client]]
+mac = "*"
+name = "default"
+
+[client.menu]
+entries = ["rescue", "local-disk"]
+default = "local-disk"
+timeout = 10

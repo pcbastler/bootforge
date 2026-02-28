@@ -1,0 +1,15 @@
+[server]
+interface = "eth0"
+data_dir = "/data"
+
+[bootloader]
+dir = "bootloader/"
+chain_url = "http://x/boot/${mac}/menu.ipxe"
+
+[[menu]]
+name = "rescue"
+label = "Rescue System"
+type = "live"
+
+[menu.boot]
+kernel = "vmlinuz"

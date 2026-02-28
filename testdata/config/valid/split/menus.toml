@@ -1,0 +1,32 @@
+[[menu]]
+name = "rescue"
+label = "Rescue System"
+type = "live"
+
+[menu.boot]
+kernel = "vmlinuz"
+initrd = "initrd"
+cmdline = "boot=live"
+
+[menu.http]
+files = "tools/rescue/"
+path = "/tools/rescue/"
+
+[[menu]]
+name = "ubuntu-install"
+label = "Ubuntu 24.04"
+type = "install"
+
+[menu.boot]
+kernel = "vmlinuz"
+initrd = "initrd"
+cmdline = "autoinstall ds=nocloud"
+
+[menu.http]
+files = "installers/ubuntu/"
+path = "/installers/ubuntu/"
+
+[[menu]]
+name = "local-disk"
+label = "Boot from local disk"
+type = "exit"

@@ -1,0 +1,22 @@
+[[client]]
+mac = "aa:bb:cc:dd:ee:01"
+name = "workstation-01"
+enabled = true
+
+[client.menu]
+entries = ["ubuntu-install", "rescue", "local-disk"]
+default = "ubuntu-install"
+timeout = 30
+
+[client.vars]
+hostname = "ws01"
+
+[[client]]
+mac = "aa:bb:cc:dd:ee:02"
+name = "workstation-02"
+enabled = true
+
+[client.menu]
+entries = ["rescue", "local-disk"]
+default = "rescue"
+timeout = 15
