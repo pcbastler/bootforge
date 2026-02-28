@@ -22,6 +22,7 @@ type ProxyServer struct {
 	blCfg     domain.BootloaderConfig
 	serverIP  net.IP
 	ifaceName string
+	httpPort  int
 	srv       *server.Server
 	logger    *slog.Logger
 	conn67    *net.UDPConn
@@ -30,12 +31,13 @@ type ProxyServer struct {
 }
 
 // NewProxyServer creates a new DHCP proxy server.
-func NewProxyServer(cfg domain.DHCPProxyConfig, blCfg domain.BootloaderConfig, serverIP net.IP, ifaceName string, srv *server.Server, logger *slog.Logger) *ProxyServer {
+func NewProxyServer(cfg domain.DHCPProxyConfig, blCfg domain.BootloaderConfig, serverIP net.IP, ifaceName string, httpPort int, srv *server.Server, logger *slog.Logger) *ProxyServer {
 	return &ProxyServer{
 		cfg:       cfg,
 		blCfg:     blCfg,
 		serverIP:  serverIP,
 		ifaceName: ifaceName,
+		httpPort:  httpPort,
 		srv:       srv,
 		logger:    logger,
 	}
@@ -75,8 +77,9 @@ func (p *ProxyServer) Start(ctx context.Context) error {
 }
 
 // listenUDP creates a UDP socket bound to the configured interface via
-// SO_BINDTODEVICE. This ensures DHCP broadcast packets arriving on the
-// interface are delivered to our socket.
+// SO_BINDTODEVICE with SO_BROADCAST enabled. SO_BINDTODEVICE ensures DHCP
+// broadcast packets arriving on the interface are delivered to our socket.
+// SO_BROADCAST allows sending replies to the broadcast address (255.255.255.255).
 func (p *ProxyServer) listenUDP(ctx context.Context, port int) (*net.UDPConn, error) {
 	lc := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
@@ -84,6 +87,11 @@ func (p *ProxyServer) listenUDP(ctx context.Context, port int) (*net.UDPConn, er
 			if err := c.Control(func(fd uintptr) {
 				opErr = syscall.SetsockoptString(
 					int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, p.ifaceName)
+				if opErr != nil {
+					return
+				}
+				opErr = syscall.SetsockoptInt(
+					int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
 			}); err != nil {
 				return err
 			}
@@ -149,18 +157,29 @@ func (p *ProxyServer) serve(ctx context.Context, conn *net.UDPConn, name string)
 	}
 }
 
+// resolveChainURL replaces template variables in the chain URL with actual values.
+func (p *ProxyServer) resolveChainURL(mac string) string {
+	url := p.blCfg.ChainURL
+	url = strings.ReplaceAll(url, "${server_ip}", p.serverIP.String())
+	url = strings.ReplaceAll(url, "${http_port}", fmt.Sprintf("%d", p.httpPort))
+	url = strings.ReplaceAll(url, "${mac}", mac)
+	return url
+}
+
 func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer *net.UDPAddr, msg *dhcpv4.DHCPv4) {
 	msgType := msg.MessageType()
 
+	mac := msg.ClientHWAddr.String()
+
 	p.logger.Debug("DHCP packet received",
 		"type", msgType,
-		"mac", msg.ClientHWAddr,
+		"mac", mac,
 		"peer", peer,
 	)
 
 	// Only handle Discover and Request.
 	if msgType != dhcpv4.MessageTypeDiscover && msgType != dhcpv4.MessageTypeRequest {
-		p.logger.Debug("ignoring non-discover/request", "type", msgType, "mac", msg.ClientHWAddr)
+		p.logger.Debug("ignoring non-discover/request", "type", msgType, "mac", mac)
 		return
 	}
 
@@ -169,7 +188,7 @@ func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer
 	classID := msg.Options.Get(dhcpv4.OptionClassIdentifier)
 	if classID == nil || !strings.Contains(string(classID), "PXEClient") {
 		p.logger.Debug("ignoring non-PXE DHCP packet",
-			"mac", msg.ClientHWAddr,
+			"mac", mac,
 			"class_id", string(classID),
 		)
 		return
@@ -179,30 +198,49 @@ func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer
 	arch, err := ArchFromOption93(msg)
 	if err != nil {
 		p.logger.Debug("PXE client without architecture option",
-			"mac", msg.ClientHWAddr,
+			"mac", mac,
 			"error", err,
 		)
 		return
 	}
 
-	bootfile := BootfileForArch(arch, p.blCfg)
-	if bootfile == "" {
-		p.logger.Warn("no bootloader configured for architecture",
-			"mac", msg.ClientHWAddr, "arch", arch)
-		return
+	// Detect whether the client is already running iPXE (second stage)
+	// or raw UEFI/BIOS PXE firmware (first stage).
+	ipxeClient := isIPXE(msg)
+
+	var bootfile string
+	if ipxeClient {
+		// iPXE is loaded — respond with chain URL to the HTTP boot menu.
+		bootfile = p.resolveChainURL(mac)
+		if bootfile == "" {
+			p.logger.Warn("no chain URL configured for iPXE client", "mac", mac)
+			return
+		}
+		p.logger.Info("iPXE client discovered, chaining to menu",
+			"mac", mac,
+			"chain_url", bootfile,
+			"type", msgType,
+		)
+	} else {
+		// Raw PXE firmware — respond with TFTP bootloader file.
+		bootfile = BootfileForArch(arch, p.blCfg)
+		if bootfile == "" {
+			p.logger.Warn("no bootloader configured for architecture",
+				"mac", mac, "arch", arch)
+			return
+		}
+		p.logger.Info("PXE client discovered",
+			"mac", mac,
+			"arch", arch,
+			"bootfile", bootfile,
+			"type", msgType,
+		)
 	}
 
-	p.logger.Info("PXE client discovered",
-		"mac", msg.ClientHWAddr,
-		"arch", arch,
-		"bootfile", bootfile,
-		"type", msgType,
-	)
-
 	// Build proxy offer/ack.
-	reply, err := BuildProxyOffer(msg, p.serverIP, bootfile, p.blCfg.ChainURL)
+	reply, err := BuildProxyOffer(msg, p.serverIP, bootfile, ipxeClient)
 	if err != nil {
-		p.logger.Error("building proxy offer", "mac", msg.ClientHWAddr, "error", err)
+		p.logger.Error("building proxy offer", "mac", mac, "error", err)
 		return
 	}
 
@@ -225,6 +263,15 @@ func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer
 	}
 
 	if _, err := conn.WriteToUDP(reply.ToBytes(), dest); err != nil {
-		p.logger.Error("sending DHCP reply", "mac", msg.ClientHWAddr, "error", err)
+		p.logger.Error("sending DHCP reply", "mac", mac, "dest", dest, "error", err)
+		return
 	}
+
+	p.logger.Debug("DHCP reply sent",
+		"mac", mac,
+		"type", reply.MessageType(),
+		"dest", dest,
+		"siaddr", reply.ServerIPAddr,
+		"bootfile", reply.BootFileName,
+	)
 }

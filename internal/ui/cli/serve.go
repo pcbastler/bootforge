@@ -111,7 +111,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			IPXE:     ipxe,
 			Logger:   logger,
 		}
-		dhcpSrv := dhcpsvc.NewProxyServer(cfg.DHCPProxy, cfg.Bootloader, net.ParseIP(serverIP), cfg.Server.Interface, srvCore, logger)
+		dhcpSrv := dhcpsvc.NewProxyServer(cfg.DHCPProxy, cfg.Bootloader, net.ParseIP(serverIP), cfg.Server.Interface, cfg.HTTP.Port, srvCore, logger)
 		if err := dhcpSrv.Start(ctx); err != nil {
 			return fmt.Errorf("starting DHCP proxy: %w", err)
 		}

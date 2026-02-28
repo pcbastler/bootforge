@@ -97,7 +97,7 @@ func TestBuildProxyOffer(t *testing.T) {
 	discover := buildDiscover(t, []byte{0x00, 0x07})
 	serverIP := net.ParseIP("192.168.1.10")
 
-	reply, err := BuildProxyOffer(discover, serverIP, "ipxe.efi", "http://192.168.1.10:8080/boot/${mac}/menu.ipxe")
+	reply, err := BuildProxyOffer(discover, serverIP, "ipxe.efi", false)
 	if err != nil {
 		t.Fatalf("BuildProxyOffer() error = %v", err)
 	}
@@ -157,7 +157,7 @@ func TestBuildProxyOfferBIOS(t *testing.T) {
 	discover := buildDiscover(t, []byte{0x00, 0x00})
 	serverIP := net.ParseIP("10.0.0.1")
 
-	reply, err := BuildProxyOffer(discover, serverIP, "undionly.kpxe", "")
+	reply, err := BuildProxyOffer(discover, serverIP, "undionly.kpxe", false)
 	if err != nil {
 		t.Fatalf("BuildProxyOffer() error = %v", err)
 	}

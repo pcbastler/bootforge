@@ -3,6 +3,7 @@ package dhcp
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"bootforge/internal/domain"
 
@@ -32,7 +33,10 @@ func BootfileForArch(arch domain.ClientArch, bl domain.BootloaderConfig) string 
 // BuildProxyOffer creates a DHCP proxy offer response from a discover message.
 // It sets the boot server (option 66), boot filename (option 67), and
 // vendor-specific options (option 43) for PXE.
-func BuildProxyOffer(discover *dhcpv4.DHCPv4, serverIP net.IP, bootfile string, chainURL string) (*dhcpv4.DHCPv4, error) {
+//
+// When ipxeClient is true, the bootfile is an HTTP URL (chain URL) and PXE
+// vendor options (option 43) are omitted since iPXE doesn't need them.
+func BuildProxyOffer(discover *dhcpv4.DHCPv4, serverIP net.IP, bootfile string, ipxeClient bool) (*dhcpv4.DHCPv4, error) {
 	reply, err := dhcpv4.NewReplyFromRequest(discover,
 		dhcpv4.WithMessageType(dhcpv4.MessageTypeOffer),
 		dhcpv4.WithServerIP(serverIP),
@@ -49,17 +53,28 @@ func BuildProxyOffer(discover *dhcpv4.DHCPv4, serverIP net.IP, bootfile string, 
 	reply.BootFileName = bootfile
 	reply.Options.Update(dhcpv4.OptGeneric(dhcpv4.OptionBootfileName, []byte(bootfile)))
 
-	// Option 43: Vendor-Specific Information (PXE discovery control).
-	// Sub-option 6: PXE_DISCOVERY_CONTROL = 8 (boot from boot server, no prompt)
-	// Sub-option 8: PXE_BOOT_SERVERS = (type=0, count=1, IP)
-	// Sub-option 9: PXE_BOOT_MENU = (type=0, description)
-	vendorOpts := buildPXEVendorOptions(serverIP)
-	reply.Options.Update(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, vendorOpts))
+	if !ipxeClient {
+		// Option 43: Vendor-Specific Information (PXE discovery control).
+		// Only needed for raw PXE firmware, not for iPXE.
+		vendorOpts := buildPXEVendorOptions(serverIP)
+		reply.Options.Update(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, vendorOpts))
+	}
+
+	// Option 54: Server Identifier (required by RFC 2131 in OFFER/ACK).
+	reply.Options.Update(dhcpv4.OptGeneric(dhcpv4.OptionServerIdentifier, serverIP.To4()))
 
 	// Option 60: Vendor Class Identifier = "PXEClient"
 	reply.Options.Update(dhcpv4.OptGeneric(dhcpv4.OptionClassIdentifier, []byte("PXEClient")))
 
 	return reply, nil
+}
+
+// isIPXE checks whether the DHCP client is already running iPXE by looking
+// for "iPXE" in Option 77 (User Class). This distinguishes second-stage iPXE
+// requests from first-stage UEFI/BIOS PXE firmware requests.
+func isIPXE(msg *dhcpv4.DHCPv4) bool {
+	userClass := msg.Options.Get(dhcpv4.OptionUserClassInformation)
+	return userClass != nil && strings.Contains(string(userClass), "iPXE")
 }
 
 // buildPXEVendorOptions constructs PXE vendor-specific sub-options (Option 43).
