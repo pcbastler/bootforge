@@ -13,6 +13,7 @@ import (
 // LoadDir reads all .toml files from the given directory and merges them
 // into a single FullConfig. It performs cross-file validation including
 // duplicate MAC/menu name detection and reference integrity.
+// Relative paths (e.g. data_dir = "./data") are resolved against dir.
 func LoadDir(dir string) (*domain.FullConfig, error) {
 	// Give a clear error if the user passes a file path instead of a directory.
 	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
@@ -50,7 +51,22 @@ func LoadDir(dir string) (*domain.FullConfig, error) {
 		results = append(results, r)
 	}
 
-	return merge(results)
+	cfg, err := merge(results)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resolve relative paths against the config directory.
+	resolvePaths(cfg, dir)
+
+	return cfg, nil
+}
+
+// resolvePaths resolves relative paths in the config against baseDir.
+func resolvePaths(cfg *domain.FullConfig, baseDir string) {
+	if cfg.Server.DataDir != "" && !filepath.IsAbs(cfg.Server.DataDir) {
+		cfg.Server.DataDir = filepath.Join(baseDir, cfg.Server.DataDir)
+	}
 }
 
 // merge combines multiple file results into a single FullConfig.
