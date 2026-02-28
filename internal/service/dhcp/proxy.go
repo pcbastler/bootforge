@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"syscall"
 
 	"bootforge/internal/domain"
@@ -163,9 +164,10 @@ func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer
 		return
 	}
 
-	// Check for PXE client (Option 60 = "PXEClient").
+	// Check for PXE client (Option 60 starts with "PXEClient").
+	// PXE clients send "PXEClient:Arch:00007:UNDI:003016" etc.
 	classID := msg.Options.Get(dhcpv4.OptionClassIdentifier)
-	if classID == nil || string(classID) != "PXEClient" {
+	if classID == nil || !strings.HasPrefix(string(classID), "PXEClient") {
 		p.logger.Debug("ignoring non-PXE DHCP packet",
 			"mac", msg.ClientHWAddr,
 			"class_id", string(classID),
