@@ -123,10 +123,12 @@ func TestFullBootFlow(t *testing.T) {
 	httpboot.SetupRoutes(mux, menuHandler, dataDir, logger)
 
 	// API routes.
+	logBuffer := store.NewLogBuffer(100)
 	apiDeps := &api.APIDeps{
 		Registry:  registry,
 		Menus:     resolver,
 		Sessions:  sessions,
+		LogBuffer: logBuffer,
 		StartedAt: time.Now(),
 	}
 	apiMux := api.NewRouter(apiDeps, logger)
@@ -316,6 +318,33 @@ func TestFullBootFlow(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		if !strings.Contains(string(body), "exit 0") {
 			t.Error("wildcard client should get local-disk (exit) menu")
+		}
+	})
+
+	// === Test 10: API logs ===
+	t.Run("API logs", func(t *testing.T) {
+		// Add a log entry to the buffer.
+		logBuffer.Add(store.LogEntry{
+			Time:    time.Now(),
+			Level:   slog.LevelInfo,
+			Message: "integration test log entry",
+			Service: "test",
+		})
+
+		resp, err := http.Get(httpBase + "/api/v1/logs")
+		if err != nil {
+			t.Fatalf("GET logs: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+
+		var logs []map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&logs)
+		if len(logs) < 1 {
+			t.Error("expected at least 1 log entry")
 		}
 	})
 }

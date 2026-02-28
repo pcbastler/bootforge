@@ -220,6 +220,96 @@ func TestTestEndpointNoHealth(t *testing.T) {
 	}
 }
 
+func TestLogsEndpoint(t *testing.T) {
+	deps := testDeps()
+	logBuf := store.NewLogBuffer(100)
+	logBuf.Add(store.LogEntry{
+		Time:    time.Now(),
+		Level:   slog.LevelInfo,
+		Message: "test message",
+		Service: "tftp",
+		MAC:     "aa:bb:cc:dd:ee:01",
+	})
+	logBuf.Add(store.LogEntry{
+		Time:    time.Now(),
+		Level:   slog.LevelWarn,
+		Message: "warning message",
+		Service: "http",
+	})
+	deps.LogBuffer = logBuf
+	mux := NewRouter(deps, slog.Default())
+
+	t.Run("all logs", func(t *testing.T) {
+		rec := doRequest(t, mux, "GET", "/api/v1/logs")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var logs []LogJSON
+		if err := json.NewDecoder(rec.Body).Decode(&logs); err != nil {
+			t.Fatalf("decoding: %v", err)
+		}
+		if len(logs) != 2 {
+			t.Errorf("expected 2 logs, got %d", len(logs))
+		}
+	})
+
+	t.Run("filter by service", func(t *testing.T) {
+		rec := doRequest(t, mux, "GET", "/api/v1/logs?service=tftp")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var logs []LogJSON
+		json.NewDecoder(rec.Body).Decode(&logs)
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+		if len(logs) > 0 && logs[0].Service != "tftp" {
+			t.Errorf("service = %q, want tftp", logs[0].Service)
+		}
+	})
+
+	t.Run("filter by mac", func(t *testing.T) {
+		rec := doRequest(t, mux, "GET", "/api/v1/logs?mac=aa:bb:cc:dd:ee:01")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var logs []LogJSON
+		json.NewDecoder(rec.Body).Decode(&logs)
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+
+	t.Run("limit", func(t *testing.T) {
+		rec := doRequest(t, mux, "GET", "/api/v1/logs?limit=1")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		var logs []LogJSON
+		json.NewDecoder(rec.Body).Decode(&logs)
+		if len(logs) != 1 {
+			t.Errorf("expected 1 log, got %d", len(logs))
+		}
+	})
+}
+
+func TestLogsEndpointNoBuffer(t *testing.T) {
+	deps := testDeps()
+	// No LogBuffer set.
+	mux := NewRouter(deps, slog.Default())
+
+	rec := doRequest(t, mux, "POST", "/api/v1/logs")
+	// GET would match, POST wouldn't match the route — 405
+	rec = doRequest(t, mux, "GET", "/api/v1/logs")
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotImplemented)
+	}
+}
+
 func TestJSONContentType(t *testing.T) {
 	deps := testDeps()
 	mux := NewRouter(deps, slog.Default())

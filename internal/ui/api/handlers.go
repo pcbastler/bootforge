@@ -3,11 +3,13 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"bootforge/internal/buildinfo"
 	"bootforge/internal/domain"
 	"bootforge/internal/health"
+	"bootforge/internal/infra/store"
 	"bootforge/internal/server"
 )
 
@@ -65,14 +67,25 @@ type CheckJSON struct {
 	Duration string `json:"duration"`
 }
 
+// LogJSON is the JSON representation of a log entry.
+type LogJSON struct {
+	Time    string         `json:"time"`
+	Level   string         `json:"level"`
+	Message string         `json:"message"`
+	Service string         `json:"service,omitempty"`
+	MAC     string         `json:"mac,omitempty"`
+	Attrs   map[string]any `json:"attrs,omitempty"`
+}
+
 // APIDeps holds all dependencies needed by the API handlers.
 type APIDeps struct {
-	Registry *server.Registry
-	Menus    *server.MenuResolver
-	Sessions *server.SessionManager
-	Health   *health.Checker
+	Registry  *server.Registry
+	Menus     *server.MenuResolver
+	Sessions  *server.SessionManager
+	Health    *health.Checker
+	LogBuffer *store.LogBuffer
 	StartedAt time.Time
-	ReloadFn func() error
+	ReloadFn  func() error
 }
 
 // handlers is the internal handler collection.
@@ -221,6 +234,43 @@ func clientToJSON(c *domain.Client) ClientJSON {
 		Timeout: c.Menu.Timeout,
 		Vars:    c.Vars,
 	}
+}
+
+func (h *handlers) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if h.deps.LogBuffer == nil {
+		errorJSON(w, http.StatusNotImplemented, "log buffer not configured")
+		return
+	}
+
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	service := r.URL.Query().Get("service")
+	mac := r.URL.Query().Get("mac")
+
+	var entries []store.LogEntry
+	if service != "" || mac != "" {
+		entries = h.deps.LogBuffer.Filter(mac, service, 0, limit)
+	} else {
+		entries = h.deps.LogBuffer.Recent(limit)
+	}
+
+	result := make([]LogJSON, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, LogJSON{
+			Time:    e.Time.Format(time.RFC3339Nano),
+			Level:   e.Level.String(),
+			Message: e.Message,
+			Service: e.Service,
+			MAC:     e.MAC,
+			Attrs:   e.Attrs,
+		})
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func healthResultToJSON(hr *domain.HealthResult) HealthJSON {

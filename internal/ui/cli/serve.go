@@ -17,6 +17,7 @@ import (
 	"bootforge/internal/infra/store"
 	"bootforge/internal/infra/toml"
 	"bootforge/internal/server"
+	dhcpsvc "bootforge/internal/service/dhcp"
 	"bootforge/internal/service/httpboot"
 	tftpsvc "bootforge/internal/service/tftp"
 	"bootforge/internal/ui/api"
@@ -91,6 +92,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	sessionStore := store.NewMemorySessionStore()
 	sessions := server.NewSessionManager(sessionStore)
 	ipxe := server.NewIPXEGenerator()
+	logBuffer := store.NewLogBuffer(1000)
 
 	// Resolve server IP from interface.
 	serverIP := resolveInterfaceIP(cfg.Server.Interface, logger)
@@ -98,6 +100,25 @@ func runServe(cmd *cobra.Command, args []string) error {
 	startedAt := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start DHCP proxy server (requires root for port 67).
+	if cfg.DHCPProxy.Enabled {
+		srvCore := &server.Server{
+			Registry: registry,
+			Menus:    menus,
+			Sessions: sessions,
+			Events:   server.NewEventBus(64),
+			IPXE:     ipxe,
+			Logger:   logger,
+		}
+		dhcpSrv := dhcpsvc.NewProxyServer(cfg.DHCPProxy, cfg.Bootloader, net.ParseIP(serverIP), srvCore, logger)
+		go func() {
+			if err := dhcpSrv.Start(ctx); err != nil {
+				logger.Error("DHCP proxy failed", "error", err)
+			}
+		}()
+		logger.Info("DHCP proxy started", "port", cfg.DHCPProxy.Port, "proxy_port", cfg.DHCPProxy.ProxyPort)
+	}
 
 	// Start TFTP server.
 	if cfg.TFTP.Enabled {
@@ -112,6 +133,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Start HTTP boot server + API.
 	var httpSrv *httpboot.HTTPServer
+	var apiDeps *api.APIDeps
 	if cfg.HTTP.Enabled {
 		vars := server.IPXEVars{
 			ServerIP: serverIP,
@@ -125,10 +147,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		httpboot.SetupRoutes(mux, menuHandler, cfg.Server.DataDir, logger)
 
 		// API routes.
-		apiDeps := &api.APIDeps{
+		apiDeps = &api.APIDeps{
 			Registry:  registry,
 			Menus:     menus,
 			Sessions:  sessions,
+			LogBuffer: logBuffer,
 			StartedAt: startedAt,
 			ReloadFn: func() error {
 				newCfg, err := toml.LoadDir(cfgDir)
@@ -182,7 +205,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		resultStore := health.NewResultStore(100)
 		checker := health.NewChecker(probes, resultStore, cfg.Health.Interval, logger)
 		go checker.Start(ctx)
-		_ = checker
+
+		// Wire health checker into API deps if HTTP is running.
+		if apiDeps != nil {
+			apiDeps.Health = checker
+		}
 	}
 
 	// Print startup summary.

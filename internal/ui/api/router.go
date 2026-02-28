@@ -20,6 +20,7 @@ func NewRouter(deps *APIDeps, logger *slog.Logger) *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/sessions", h.handleSessions)
 	mux.HandleFunc("POST /api/v1/reload", h.handleReload)
 	mux.HandleFunc("POST /api/v1/test", h.handleTest)
+	mux.HandleFunc("GET /api/v1/logs", h.handleLogs)
 
 	return mux
 }
