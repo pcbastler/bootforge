@@ -85,6 +85,11 @@ func (s *TFTPServer) Stop(_ context.Context) error {
 	return nil
 }
 
+// ReadHandler returns the TFTP read handler function for use in tests.
+func (s *TFTPServer) ReadHandler() func(string, io.ReaderFrom) error {
+	return s.readHandler
+}
+
 // readHandler serves TFTP read requests.
 func (s *TFTPServer) readHandler(filename string, rf io.ReaderFrom) error {
 	// Resolve the full path and ensure it's within the bootloader directory.
