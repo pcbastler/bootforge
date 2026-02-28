@@ -51,26 +51,25 @@ func (g *IPXEGenerator) GenerateOverride(entry *domain.MenuEntry, vars IPXEVars)
 }
 
 func (g *IPXEGenerator) writeMenu(b *strings.Builder, entries []*domain.MenuEntry, mc domain.MenuConfig, vars IPXEVars) {
+	b.WriteString(":start\n")
 	b.WriteString("menu Bootforge Boot Menu\n")
-
-	// Timeout.
-	if mc.Timeout > 0 {
-		b.WriteString(fmt.Sprintf("timeout %d000\n", mc.Timeout))
-	}
-
-	// Default.
-	if mc.Default != "" {
-		b.WriteString(fmt.Sprintf("default %s\n", mc.Default))
-	}
-
-	b.WriteString("\n")
 
 	// Menu items.
 	for _, entry := range entries {
 		b.WriteString(fmt.Sprintf("item %s %s\n", entry.Name, entry.Label))
 	}
 
-	b.WriteString("\nchoose selected || goto failed\n")
+	// Choose with optional timeout and default.
+	b.WriteString("\n")
+	choose := "choose"
+	if mc.Default != "" {
+		choose += fmt.Sprintf(" --default %s", mc.Default)
+	}
+	if mc.Timeout > 0 {
+		choose += fmt.Sprintf(" --timeout %d000", mc.Timeout)
+	}
+	choose += " selected || goto failed\n"
+	b.WriteString(choose)
 
 	// Entry labels.
 	for _, entry := range entries {

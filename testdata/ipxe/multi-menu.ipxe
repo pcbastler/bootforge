@@ -1,14 +1,12 @@
 #!ipxe
 
+:start
 menu Bootforge Boot Menu
-timeout 30000
-default rescue
-
 item rescue Rescue System
 item ubuntu-install Ubuntu 24.04
 item local-disk Boot from local disk
 
-choose selected || goto failed
+choose --default rescue --timeout 30000 selected || goto failed
 
 :rescue
 kernel http://192.168.1.10:8080/tools/rescue/vmlinuz boot=live

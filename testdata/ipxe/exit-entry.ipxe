@@ -1,7 +1,7 @@
 #!ipxe
 
+:start
 menu Bootforge Boot Menu
-
 item local-disk Boot from local disk
 
 choose selected || goto failed
