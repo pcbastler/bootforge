@@ -118,21 +118,35 @@ func (p *ProxyServer) serve(ctx context.Context, conn *net.UDPConn, name string)
 func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer *net.UDPAddr, msg *dhcpv4.DHCPv4) {
 	msgType := msg.MessageType()
 
+	p.logger.Debug("DHCP packet received",
+		"type", msgType,
+		"mac", msg.ClientHWAddr,
+		"peer", peer,
+	)
+
 	// Only handle Discover and Request.
 	if msgType != dhcpv4.MessageTypeDiscover && msgType != dhcpv4.MessageTypeRequest {
+		p.logger.Debug("ignoring non-discover/request", "type", msgType, "mac", msg.ClientHWAddr)
 		return
 	}
 
 	// Check for PXE client (Option 60 = "PXEClient").
 	classID := msg.Options.Get(dhcpv4.OptionClassIdentifier)
 	if classID == nil || string(classID) != "PXEClient" {
+		p.logger.Debug("ignoring non-PXE DHCP packet",
+			"mac", msg.ClientHWAddr,
+			"class_id", string(classID),
+		)
 		return
 	}
 
 	// Parse architecture from Option 93.
 	arch, err := ArchFromOption93(msg)
 	if err != nil {
-		p.logger.Debug("skipping non-PXE client", "mac", msg.ClientHWAddr, "error", err)
+		p.logger.Debug("PXE client without architecture option",
+			"mac", msg.ClientHWAddr,
+			"error", err,
+		)
 		return
 	}
 
