@@ -300,6 +300,7 @@ func TestMenuNames(t *testing.T) {
 
 func TestIPXEDownloadArchs(t *testing.T) {
 	s := &WizardState{
+		IPXEVariant: IPXEVariantFull,
 		IPXEBaseURL: "https://example.com",
 		IPXEArchs:   []string{"uefi_x64", "arm64"},
 	}
@@ -314,13 +315,13 @@ func TestIPXEDownloadArchs(t *testing.T) {
 	if archs[1].Filename != "ipxe-arm64.efi" {
 		t.Errorf("arch[1] = %q", archs[1].Filename)
 	}
-	if archs[0].URL != "https://example.com/x86_64-efi/snponly.efi" {
-		t.Errorf("URL = %q", archs[0].URL)
+	if archs[0].URL != "https://example.com/x86_64-efi/ipxe.efi" {
+		t.Errorf("full variant URL = %q", archs[0].URL)
 	}
 }
 
 func TestIPXEArchitectures(t *testing.T) {
-	archs := IPXEArchitectures("https://boot.ipxe.org")
+	archs := IPXEArchitectures("https://boot.ipxe.org", IPXEVariantFull)
 	if len(archs) != 4 {
 		t.Fatalf("expected 4 archs, got %d", len(archs))
 	}
@@ -329,6 +330,33 @@ func TestIPXEArchitectures(t *testing.T) {
 		if archs[i].Label != want {
 			t.Errorf("arch[%d].Label = %q, want %q", i, archs[i].Label, want)
 		}
+	}
+}
+
+func TestIPXEVariantURLs(t *testing.T) {
+	base := "https://boot.ipxe.org"
+
+	full := IPXEArchitectures(base, IPXEVariantFull)
+	snp := IPXEArchitectures(base, IPXEVariantSNPOnly)
+
+	// EFI architectures differ by variant.
+	if full[0].URL != base+"/x86_64-efi/ipxe.efi" {
+		t.Errorf("full UEFI x64 URL = %q", full[0].URL)
+	}
+	if snp[0].URL != base+"/x86_64-efi/snponly.efi" {
+		t.Errorf("snp UEFI x64 URL = %q", snp[0].URL)
+	}
+
+	// Local filenames are the same regardless of variant.
+	for i := range full {
+		if full[i].Filename != snp[i].Filename {
+			t.Errorf("arch[%d]: full filename %q != snp filename %q", i, full[i].Filename, snp[i].Filename)
+		}
+	}
+
+	// BIOS URL is identical for both variants.
+	if full[2].URL != snp[2].URL {
+		t.Errorf("BIOS URLs differ: full=%q, snp=%q", full[2].URL, snp[2].URL)
 	}
 }
 

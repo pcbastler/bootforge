@@ -106,11 +106,19 @@ type rawBoot struct {
 }
 
 type rawClient struct {
-	MAC     string            `toml:"mac"`
-	Name    string            `toml:"name"`
-	Enabled *bool             `toml:"enabled"`
-	Menu    rawMenuConfig     `toml:"menu"`
-	Vars    map[string]string `toml:"vars"`
+	MAC        string                  `toml:"mac"`
+	Name       string                  `toml:"name"`
+	Enabled    *bool                   `toml:"enabled"`
+	Menu       rawMenuConfig           `toml:"menu"`
+	Bootloader *rawBootloaderOverride  `toml:"bootloader"`
+	Vars       map[string]string       `toml:"vars"`
+}
+
+type rawBootloaderOverride struct {
+	UEFX64 string `toml:"uefi_x64"`
+	UEFX86 string `toml:"uefi_x86"`
+	BIOS   string `toml:"bios"`
+	ARM64  string `toml:"arm64"`
 }
 
 type rawMenuConfig struct {
@@ -345,6 +353,15 @@ func convertClient(raw *rawClient, sourceFile string) (*domain.Client, error) {
 			Default: raw.Menu.Default,
 			Timeout: raw.Menu.Timeout,
 		},
+	}
+
+	if raw.Bootloader != nil {
+		client.Bootloader = &domain.BootloaderOverride{
+			UEFX64: raw.Bootloader.UEFX64,
+			UEFX86: raw.Bootloader.UEFX86,
+			BIOS:   raw.Bootloader.BIOS,
+			ARM64:  raw.Bootloader.ARM64,
+		}
 	}
 
 	return client, nil

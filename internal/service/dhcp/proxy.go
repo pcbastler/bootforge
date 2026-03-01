@@ -157,6 +157,21 @@ func (p *ProxyServer) serve(ctx context.Context, conn *net.UDPConn, name string)
 	}
 }
 
+// bootfileForClient returns the bootloader filename for a client and architecture.
+// It checks for a per-client bootloader override first, then falls back to the global config.
+func (p *ProxyServer) bootfileForClient(hwAddr net.HardwareAddr, arch domain.ClientArch) string {
+	if p.srv != nil && p.srv.Registry != nil {
+		if client, err := p.srv.Registry.FindClient(hwAddr); err == nil {
+			if client.Bootloader != nil {
+				if f := client.Bootloader.FileForArch(arch); f != "" {
+					return f
+				}
+			}
+		}
+	}
+	return p.blCfg.FileForArch(arch)
+}
+
 // resolveChainURL replaces template variables in the chain URL with actual values.
 func (p *ProxyServer) resolveChainURL(mac string) string {
 	url := p.blCfg.ChainURL
@@ -223,7 +238,8 @@ func (p *ProxyServer) handleMessage(ctx context.Context, conn *net.UDPConn, peer
 		)
 	} else {
 		// Raw PXE firmware — respond with TFTP bootloader file.
-		bootfile = BootfileForArch(arch, p.blCfg)
+		// Check for per-client bootloader override first.
+		bootfile = p.bootfileForClient(msg.ClientHWAddr, arch)
 		if bootfile == "" {
 			p.logger.Warn("no bootloader configured for architecture",
 				"mac", mac, "arch", arch)

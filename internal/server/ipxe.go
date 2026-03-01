@@ -70,6 +70,7 @@ func (g *IPXEGenerator) writeMenu(b *strings.Builder, entries []*domain.MenuEntr
 	}
 	choose += " selected || goto failed\n"
 	b.WriteString(choose)
+	b.WriteString("goto ${selected}\n")
 
 	// Entry labels.
 	for _, entry := range entries {

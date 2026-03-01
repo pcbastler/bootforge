@@ -28,6 +28,7 @@ type WizardState struct {
 
 	// Bootloader
 	DownloadIPXE  bool
+	IPXEVariant   IPXEVariant // "full" or "snponly"
 	IPXEBaseURL   string
 	IPXEArchs     []string // "uefi_x64", "uefi_x86", "bios", "arm64"
 	BootloaderDir string
@@ -71,6 +72,7 @@ func DefaultState() *WizardState {
 		TFTPPort:      69,
 		HTTPEnabled:   true,
 		HTTPPort:      8080,
+		IPXEVariant:   IPXEVariantFull,
 		IPXEBaseURL:   DefaultIPXEBaseURL,
 		BootloaderDir: "bootloader",
 		Menus: []MenuState{
@@ -183,6 +185,7 @@ func ConfigToState(cfg *domain.FullConfig) *WizardState {
 		HTTPEnabled:   cfg.HTTP.Enabled,
 		HTTPPort:      cfg.HTTP.Port,
 		BootloaderDir: cfg.Bootloader.Dir,
+		IPXEVariant:   IPXEVariantFull,
 		IPXEBaseURL:   DefaultIPXEBaseURL,
 	}
 
@@ -243,7 +246,7 @@ func (s *WizardState) MenuNames() []string {
 
 // IPXEDownloadArchs returns the IPXEArch list for the selected architectures.
 func (s *WizardState) IPXEDownloadArchs() []IPXEArch {
-	all := IPXEArchitectures(s.IPXEBaseURL)
+	all := IPXEArchitectures(s.IPXEBaseURL, s.IPXEVariant)
 	archMap := map[string]int{
 		"uefi_x64": 0,
 		"uefi_x86": 1,

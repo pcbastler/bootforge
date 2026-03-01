@@ -18,15 +18,33 @@ type IPXEArch struct {
 // DefaultIPXEBaseURL is the default source for iPXE binaries.
 const DefaultIPXEBaseURL = "https://boot.ipxe.org"
 
+// IPXEVariant selects which iPXE binary to download for EFI architectures.
+type IPXEVariant string
+
+const (
+	// IPXEVariantFull downloads ipxe.efi — full build with framebuffer/GOP support.
+	// Recommended for maximum hardware compatibility.
+	IPXEVariantFull IPXEVariant = "full"
+
+	// IPXEVariantSNPOnly downloads snponly.efi — minimal SNP-only build.
+	// Smaller but may lack display output on some UEFI systems.
+	IPXEVariantSNPOnly IPXEVariant = "snponly"
+)
+
 // IPXEArchitectures returns the available iPXE architectures with download
-// URLs derived from baseURL. Uses architecture-specific subdirectories
+// URLs derived from baseURL and variant. Uses architecture-specific subdirectories
 // matching the boot.ipxe.org layout.
-func IPXEArchitectures(baseURL string) []IPXEArch {
+func IPXEArchitectures(baseURL string, variant IPXEVariant) []IPXEArch {
+	efiBinary := "ipxe.efi"
+	if variant == IPXEVariantSNPOnly {
+		efiBinary = "snponly.efi"
+	}
+
 	return []IPXEArch{
-		{Label: "UEFI x64", Filename: "ipxe.efi", URL: baseURL + "/x86_64-efi/snponly.efi"},
-		{Label: "UEFI x86", Filename: "ipxe-i386.efi", URL: baseURL + "/i386-efi/snponly.efi"},
+		{Label: "UEFI x64", Filename: "ipxe.efi", URL: baseURL + "/x86_64-efi/" + efiBinary},
+		{Label: "UEFI x86", Filename: "ipxe-i386.efi", URL: baseURL + "/i386-efi/" + efiBinary},
 		{Label: "BIOS", Filename: "undionly.kpxe", URL: baseURL + "/x86_64-pcbios/undionly.kpxe"},
-		{Label: "ARM64", Filename: "ipxe-arm64.efi", URL: baseURL + "/arm64-efi/snponly.efi"},
+		{Label: "ARM64", Filename: "ipxe-arm64.efi", URL: baseURL + "/arm64-efi/" + efiBinary},
 	}
 }
 
