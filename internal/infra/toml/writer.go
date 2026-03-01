@@ -144,7 +144,14 @@ func configToRaw(cfg *domain.FullConfig) rawFile {
 			}
 		}
 
-		if m.Type != domain.MenuExit {
+		switch m.Type {
+		case domain.MenuExit:
+			// exit entries have no boot params
+		case domain.MenuChain:
+			rm.Boot = &rawBoot{
+				Chain: m.Boot.Chain,
+			}
+		default:
 			rm.Boot = &rawBoot{
 				Kernel:  m.Boot.Kernel,
 				Initrd:  m.Boot.Initrd,

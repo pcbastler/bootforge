@@ -1,0 +1,126 @@
+[server]
+interface = 'enx6c1ff76fbdc6'
+data_dir = 'testconfig/data'
+
+[server.logging]
+level = 'info'
+format = 'pretty'
+
+[dhcp_proxy]
+enabled = true
+port = 67
+proxy_port = 4011
+vendor_class = ''
+
+[tftp]
+enabled = true
+port = 69
+block_size = 512
+timeout = '5s'
+retries = 0
+
+[http]
+enabled = true
+port = 8080
+read_timeout = '30s'
+
+[health]
+enabled = true
+interval = '30s'
+startup_check = true
+
+[bootloader]
+dir = 'bootloader'
+uefi_x64 = 'ipxe.efi'
+uefi_x86 = 'ipxe-i386.efi'
+bios = 'undionly.kpxe'
+arm64 = 'ipxe-arm64.efi'
+chain_url = 'http://${server_ip}:${http_port}/boot/${mac}/menu.ipxe'
+
+[[menu]]
+name = 'alpine-live'
+label = 'Alpine Linux 3.21 (Live)'
+description = ''
+type = 'live'
+
+[menu.http]
+files = 'live/alpine/'
+path = '/data/live/alpine/'
+upstream = ''
+
+[menu.boot]
+kernel = 'vmlinuz-lts'
+initrd = 'initramfs-lts'
+cmdline = 'ip=dhcp console=tty0 alpine_repo=https://dl-cdn.alpinelinux.org/alpine/v3.21/main modloop=https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/netboot/modloop-lts'
+loader = ''
+files = []
+binary = ''
+image = ''
+chain = ''
+
+[[menu]]
+name = 'debian-install'
+label = 'Debian 12 (Netinstall)'
+description = ''
+type = 'install'
+
+[menu.http]
+files = 'installers/debian/'
+path = '/data/installers/debian/'
+upstream = ''
+
+[menu.boot]
+kernel = 'linux'
+initrd = 'initrd.gz'
+cmdline = '---'
+loader = ''
+files = []
+binary = ''
+image = ''
+chain = ''
+
+[[menu]]
+name = 'kernel-test'
+label = 'Kernel Only (no initrd, expect panic)'
+description = ''
+type = 'live'
+
+[menu.http]
+files = ''
+path = '/data/installers/debian/'
+upstream = ''
+
+[menu.boot]
+kernel = 'linux'
+initrd = ''
+cmdline = 'earlycon=efifb'
+loader = ''
+files = []
+binary = ''
+image = ''
+chain = ''
+
+[[menu]]
+name = 'local-disk'
+label = 'Boot from local disk'
+description = ''
+type = 'exit'
+
+[[menu]]
+name = 'netboot-xyz'
+label = 'netboot.xyz'
+description = ''
+type = 'chain'
+
+[menu.boot]
+chain = 'https://boot.netboot.xyz'
+
+[[client]]
+mac = '*'
+name = 'default'
+enabled = true
+
+[client.menu]
+entries = ['alpine-live', 'debian-install', 'local-disk']
+default = 'alpine-live'
+timeout = 10
