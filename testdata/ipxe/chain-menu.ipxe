@@ -1,0 +1,26 @@
+#!ipxe
+
+:start
+menu Bootforge Boot Menu
+item rescue Rescue System
+item netboot-xyz netboot.xyz
+item local-disk Boot from local disk
+
+choose --default rescue --timeout 30000 selected || goto failed
+goto ${selected}
+
+:rescue
+kernel http://192.168.1.10:8080/tools/rescue/vmlinuz boot=live
+initrd http://192.168.1.10:8080/tools/rescue/initrd
+boot
+
+:netboot-xyz
+chain --autofree https://boot.netboot.xyz || goto start
+
+:local-disk
+exit 0
+
+:failed
+echo Boot failed, retrying in 5 seconds...
+sleep 5
+goto start

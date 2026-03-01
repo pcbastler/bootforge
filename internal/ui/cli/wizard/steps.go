@@ -25,6 +25,7 @@ func Run(configDir string) (*domain.FullConfig, error) {
 		{"Data Directory", stepDataDir},
 		{"iPXE Bootloader", stepBootloader},
 		{"Services", stepServices},
+		{"netboot.xyz", stepNetboot},
 		{"Boot Menus", stepMenus},
 		{"Clients", stepClients},
 		{"Summary", stepSummary},
@@ -71,6 +72,24 @@ func Run(configDir string) (*domain.FullConfig, error) {
 		}
 	}
 
+	// Download netboot.xyz if requested.
+	if state.NetbootMode == NetbootSelfHosted {
+		destDir := filepath.Join(configDir, state.DataDir, state.NetbootDir)
+		assets := NetbootAssets(state.NetbootBaseURL)
+		fmt.Println("  Downloading netboot.xyz files...")
+		err := DownloadNetbootFiles(assets, destDir, func(r DownloadResult) {
+			if r.Err != nil {
+				fmt.Printf("    FAIL  %s: %v\n", r.Arch.Filename, r.Err)
+			} else {
+				fmt.Printf("    OK    %s (%d bytes)\n", r.Arch.Filename, r.Size)
+			}
+		})
+		if err != nil {
+			fmt.Printf("\n  Warning: %v\n", err)
+			fmt.Println("  You can download netboot.xyz files manually later.")
+		}
+	}
+
 	// Create data directory.
 	dataDir := filepath.Join(configDir, state.DataDir)
 	os.MkdirAll(dataDir, 0755)
@@ -99,6 +118,7 @@ func RunEdit(configDir string, existing *domain.FullConfig) (*domain.FullConfig,
 		{"Data Directory", stepDataDir},
 		{"iPXE Bootloader", stepBootloader},
 		{"Services", stepServices},
+		{"netboot.xyz", stepNetboot},
 		{"Boot Menus", stepMenusEdit},
 		{"Clients", stepClientsEdit},
 		{"Summary", stepSummary},
@@ -270,6 +290,46 @@ func stepServices(s *WizardState) error {
 	return nil
 }
 
+func stepNetboot(s *WizardState) error {
+	modeOpts := []Option[NetbootMode]{
+		{Label: "Remote (chain to boot.netboot.xyz, requires internet)", Value: NetbootRemote},
+		{Label: "Self-hosted (download files, serve locally)", Value: NetbootSelfHosted},
+		{Label: "Skip", Value: NetbootSkip},
+	}
+	if err := Select("Add netboot.xyz to your boot menu?", modeOpts, &s.NetbootMode); err != nil {
+		return err
+	}
+
+	switch s.NetbootMode {
+	case NetbootRemote:
+		s.Menus = append(s.Menus, MenuState{
+			Name:  "netboot-xyz",
+			Label: "netboot.xyz",
+			Type:  "chain",
+			Chain: "https://boot.netboot.xyz",
+		})
+	case NetbootSelfHosted:
+		if err := Input("netboot.xyz download URL", DefaultNetbootBaseURL, &s.NetbootBaseURL, func(v string) error {
+			if v == "" {
+				return fmt.Errorf("URL is required")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.Menus = append(s.Menus, MenuState{
+			Name:      "netboot-xyz",
+			Label:     "netboot.xyz (local)",
+			Type:      "chain",
+			Chain:     "http://${server_ip}:${http_port}/netboot/netboot.xyz.lkrn",
+			HTTPPath:  "/netboot/",
+			HTTPFiles: "netboot/",
+		})
+	}
+
+	return nil
+}
+
 func stepMenus(s *WizardState) error {
 	// local-disk is already in defaults. Ask about additional entries.
 	fmt.Println("  The 'local-disk' (exit) menu is included by default.")
@@ -348,6 +408,7 @@ func promptMenuEntry() (MenuState, error) {
 		{Label: "Install (full OS installation)", Value: "install"},
 		{Label: "Live (RAM-based live system)", Value: "live"},
 		{Label: "Tool (diagnostic/utility)", Value: "tool"},
+		{Label: "Chain (chainload external iPXE menu)", Value: "chain"},
 		{Label: "Exit (boot from local disk)", Value: "exit"},
 	}
 	m.Type = "install"
@@ -355,7 +416,16 @@ func promptMenuEntry() (MenuState, error) {
 		return m, err
 	}
 
-	if m.Type != "exit" {
+	if m.Type == "chain" {
+		if err := Input("Chain URL", "https://boot.netboot.xyz", &m.Chain, func(v string) error {
+			if v == "" {
+				return fmt.Errorf("chain URL is required")
+			}
+			return nil
+		}); err != nil {
+			return m, err
+		}
+	} else if m.Type != "exit" {
 		if err := Input("Kernel filename", "vmlinuz", &m.Kernel, nil); err != nil {
 			return m, err
 		}

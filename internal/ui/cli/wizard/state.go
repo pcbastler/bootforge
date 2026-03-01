@@ -33,6 +33,11 @@ type WizardState struct {
 	IPXEArchs     []string // "uefi_x64", "uefi_x86", "bios", "arm64"
 	BootloaderDir string
 
+	// Netboot.xyz
+	NetbootMode    NetbootMode
+	NetbootBaseURL string
+	NetbootDir     string
+
 	// Menus
 	Menus []MenuState
 
@@ -40,14 +45,24 @@ type WizardState struct {
 	Clients []ClientState
 }
 
+// NetbootMode controls how netboot.xyz is integrated.
+type NetbootMode string
+
+const (
+	NetbootSkip       NetbootMode = "skip"
+	NetbootRemote     NetbootMode = "remote"
+	NetbootSelfHosted NetbootMode = "self-hosted"
+)
+
 // MenuState holds wizard data for a single menu entry.
 type MenuState struct {
 	Name        string
 	Label       string
-	Type        string // "install", "live", "tool", "exit"
+	Type        string // "install", "live", "tool", "exit", "chain"
 	Kernel      string
 	Initrd      string
 	Cmdline     string
+	Chain       string // chain URL for type "chain"
 	HTTPPath    string
 	HTTPFiles   string
 }
@@ -72,9 +87,12 @@ func DefaultState() *WizardState {
 		TFTPPort:      69,
 		HTTPEnabled:   true,
 		HTTPPort:      8080,
-		IPXEVariant:   IPXEVariantFull,
-		IPXEBaseURL:   DefaultIPXEBaseURL,
-		BootloaderDir: "bootloader",
+		IPXEVariant:    IPXEVariantFull,
+		IPXEBaseURL:    DefaultIPXEBaseURL,
+		BootloaderDir:  "bootloader",
+		NetbootMode:    NetbootSkip,
+		NetbootBaseURL: DefaultNetbootBaseURL,
+		NetbootDir:     "netboot",
 		Menus: []MenuState{
 			{Name: "local-disk", Label: "Boot from local disk", Type: "exit"},
 		},
@@ -144,6 +162,7 @@ func StateToConfig(s *WizardState) *domain.FullConfig {
 				Kernel:  m.Kernel,
 				Initrd:  m.Initrd,
 				Cmdline: m.Cmdline,
+				Chain:   m.Chain,
 			},
 			HTTP: domain.MenuHTTP{
 				Path:  m.HTTPPath,
@@ -212,6 +231,7 @@ func ConfigToState(cfg *domain.FullConfig) *WizardState {
 			Kernel:    m.Boot.Kernel,
 			Initrd:    m.Boot.Initrd,
 			Cmdline:   m.Boot.Cmdline,
+			Chain:     m.Boot.Chain,
 			HTTPPath:  m.HTTP.Path,
 			HTTPFiles: m.HTTP.Files,
 		})

@@ -132,6 +132,46 @@ func TestIPXEVariableSubstitution(t *testing.T) {
 	}
 }
 
+func TestIPXEChainSingle(t *testing.T) {
+	gen := NewIPXEGenerator()
+	entries := []*domain.MenuEntry{
+		{
+			Name: "netboot-xyz", Label: "netboot.xyz", Type: domain.MenuChain,
+			Boot: domain.BootParams{Chain: "https://boot.netboot.xyz"},
+		},
+	}
+	mc := domain.MenuConfig{Entries: []string{"netboot-xyz"}}
+
+	got := gen.Generate(entries, mc, testVars)
+	golden(t, "chain-single.ipxe", got)
+}
+
+func TestIPXEChainInMenu(t *testing.T) {
+	gen := NewIPXEGenerator()
+	entries := []*domain.MenuEntry{
+		{
+			Name: "rescue", Label: "Rescue System", Type: domain.MenuLive,
+			Boot: domain.BootParams{Kernel: "vmlinuz", Initrd: "initrd", Cmdline: "boot=live"},
+			HTTP: domain.MenuHTTP{Path: "/tools/rescue/"},
+		},
+		{
+			Name: "netboot-xyz", Label: "netboot.xyz", Type: domain.MenuChain,
+			Boot: domain.BootParams{Chain: "https://boot.netboot.xyz"},
+		},
+		{
+			Name: "local-disk", Label: "Boot from local disk", Type: domain.MenuExit,
+		},
+	}
+	mc := domain.MenuConfig{
+		Entries: []string{"rescue", "netboot-xyz", "local-disk"},
+		Default: "rescue",
+		Timeout: 30,
+	}
+
+	got := gen.Generate(entries, mc, testVars)
+	golden(t, "chain-menu.ipxe", got)
+}
+
 func TestIPXEBinaryBoot(t *testing.T) {
 	gen := NewIPXEGenerator()
 	entries := []*domain.MenuEntry{

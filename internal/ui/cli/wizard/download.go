@@ -79,6 +79,23 @@ func DownloadIPXEFiles(archs []IPXEArch, destDir string, progress func(DownloadR
 	return nil
 }
 
+// DefaultNetbootBaseURL is the default source for netboot.xyz release assets.
+const DefaultNetbootBaseURL = "https://github.com/netbootxyz/netboot.xyz/releases/latest/download"
+
+// NetbootAssets returns the netboot.xyz bootloader files to download.
+func NetbootAssets(baseURL string) []IPXEArch {
+	return []IPXEArch{
+		{Label: "BIOS/UEFI (lkrn)", Filename: "netboot.xyz.lkrn", URL: baseURL + "/netboot.xyz.lkrn"},
+		{Label: "UEFI x64", Filename: "netboot.xyz.efi", URL: baseURL + "/netboot.xyz.efi"},
+		{Label: "ARM64", Filename: "netboot.xyz-arm64.efi", URL: baseURL + "/netboot.xyz-arm64.efi"},
+	}
+}
+
+// DownloadNetbootFiles downloads netboot.xyz assets into destDir.
+func DownloadNetbootFiles(assets []IPXEArch, destDir string, progress func(DownloadResult)) error {
+	return DownloadIPXEFiles(assets, destDir, progress)
+}
+
 func downloadOne(arch IPXEArch, destDir string) DownloadResult {
 	res := DownloadResult{Arch: arch}
 
