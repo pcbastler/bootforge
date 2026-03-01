@@ -1,6 +1,6 @@
 [server]
 interface = 'enx6c1ff76fbdc6'
-data_dir = 'testconfig/data'
+data_dir = 'data'
 
 [server.logging]
 level = 'info'
@@ -113,6 +113,13 @@ description = ''
 type = 'chain'
 
 [menu.boot]
+kernel = ''
+initrd = ''
+cmdline = ''
+loader = ''
+files = []
+binary = ''
+image = ''
 chain = 'https://boot.netboot.xyz'
 
 [[client]]
@@ -121,6 +128,6 @@ name = 'default'
 enabled = true
 
 [client.menu]
-entries = ['alpine-live', 'debian-install', 'local-disk']
+entries = ['alpine-live', 'debian-install', 'local-disk', 'netboot-xyz']
 default = 'alpine-live'
 timeout = 10

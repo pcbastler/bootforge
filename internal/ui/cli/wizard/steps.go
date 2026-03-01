@@ -105,59 +105,102 @@ func Run(configDir string) (*domain.FullConfig, error) {
 	return cfg, nil
 }
 
-// RunEdit runs the wizard with pre-filled values from an existing config.
+// RunEdit runs the wizard with section-based navigation for an existing config.
 func RunEdit(configDir string, existing *domain.FullConfig) (*domain.FullConfig, error) {
 	state := ConfigToState(existing)
 	state.ConfigDir = configDir
 
-	steps := []struct {
-		name string
-		fn   func(*WizardState) error
-	}{
-		{"Network Interface", stepInterface},
-		{"Data Directory", stepDataDir},
-		{"iPXE Bootloader", stepBootloader},
-		{"Services", stepServices},
-		{"netboot.xyz", stepNetboot},
-		{"Boot Menus", stepMenusEdit},
-		{"Clients", stepClientsEdit},
-		{"Summary", stepSummary},
-	}
+	type editSection string
+	const (
+		editServer     editSection = "server"
+		editServices   editSection = "services"
+		editBootloader editSection = "bootloader"
+		editNetboot    editSection = "netboot"
+		editMenus      editSection = "menus"
+		editClients    editSection = "clients"
+		editSave       editSection = "save"
+	)
 
 	fmt.Println()
 	fmt.Println("  Bootforge Configuration Editor")
 	fmt.Println("  ──────────────────────────────")
 	fmt.Println()
 
-	for i, step := range steps {
-		fmt.Printf("  Step %d/%d: %s\n\n", i+1, len(steps), step.name)
-		if err := step.fn(state); err != nil {
-			return nil, fmt.Errorf("step %q: %w", step.name, err)
+	// Show current config summary.
+	stepSummary(state)
+	fmt.Println()
+
+	sectionOpts := []Option[editSection]{
+		{Label: "Server (interface, data directory)", Value: editServer},
+		{Label: "Services (DHCP, TFTP, HTTP)", Value: editServices},
+		{Label: "Bootloader (iPXE files)", Value: editBootloader},
+		{Label: "netboot.xyz", Value: editNetboot},
+		{Label: "Menu entries", Value: editMenus},
+		{Label: "Clients", Value: editClients},
+		{Label: "Save and exit", Value: editSave},
+	}
+
+	for {
+		section := editSave
+		if err := Select("What would you like to edit?", sectionOpts, &section); err != nil {
+			return nil, err
+		}
+
+		var err error
+		switch section {
+		case editServer:
+			if err = stepInterface(state); err == nil {
+				err = stepDataDir(state)
+			}
+		case editServices:
+			err = stepServices(state)
+		case editBootloader:
+			err = stepBootloader(state)
+		case editNetboot:
+			err = stepNetboot(state)
+		case editMenus:
+			err = stepMenusEdit(state)
+		case editClients:
+			err = stepClientsEdit(state)
+		case editSave:
+			fmt.Println()
+			stepSummary(state)
+
+			write := true
+			if err := Confirm("Save configuration?", &write); err != nil {
+				return nil, err
+			}
+			if !write {
+				continue
+			}
+
+			cfg := StateToConfig(state)
+
+			// Backup existing config.
+			src := filepath.Join(configDir, "bootforge.toml")
+			if _, err := os.Stat(src); err == nil {
+				bak := src + ".bak"
+				data, _ := os.ReadFile(src)
+				if data != nil {
+					os.WriteFile(bak, data, 0644)
+					fmt.Println("  Backup saved:", bak)
+				}
+			}
+
+			if err := toml.WriteConfig(cfg, configDir); err != nil {
+				return nil, err
+			}
+
+			fmt.Println("  Configuration updated:", src)
+			fmt.Println()
+			return cfg, nil
+		}
+
+		if err != nil {
+			return nil, err
 		}
 		fmt.Println()
 	}
-
-	cfg := StateToConfig(state)
-
-	// Backup existing config.
-	src := filepath.Join(configDir, "bootforge.toml")
-	if _, err := os.Stat(src); err == nil {
-		bak := src + ".bak"
-		data, _ := os.ReadFile(src)
-		if data != nil {
-			os.WriteFile(bak, data, 0644)
-			fmt.Println("  Backup saved:", bak)
-		}
-	}
-
-	if err := toml.WriteConfig(cfg, configDir); err != nil {
-		return nil, err
-	}
-
-	fmt.Println("  Configuration updated:", src)
-	fmt.Println()
-
-	return cfg, nil
 }
 
 // --- Individual steps ---
@@ -291,6 +334,18 @@ func stepServices(s *WizardState) error {
 }
 
 func stepNetboot(s *WizardState) error {
+	// Detect current netboot mode from existing menus.
+	for _, m := range s.Menus {
+		if m.Name == "netboot-xyz" && m.Type == "chain" {
+			if strings.Contains(m.Chain, "boot.netboot.xyz") {
+				s.NetbootMode = NetbootRemote
+			} else if m.Chain != "" {
+				s.NetbootMode = NetbootSelfHosted
+			}
+			break
+		}
+	}
+
 	modeOpts := []Option[NetbootMode]{
 		{Label: "Remote (chain to boot.netboot.xyz, requires internet)", Value: NetbootRemote},
 		{Label: "Self-hosted (download files, serve locally)", Value: NetbootSelfHosted},
@@ -298,6 +353,25 @@ func stepNetboot(s *WizardState) error {
 	}
 	if err := Select("Add netboot.xyz to your boot menu?", modeOpts, &s.NetbootMode); err != nil {
 		return err
+	}
+
+	// Remove any existing netboot-xyz from menus and client entries.
+	filtered := s.Menus[:0]
+	for _, m := range s.Menus {
+		if m.Name != "netboot-xyz" {
+			filtered = append(filtered, m)
+		}
+	}
+	s.Menus = filtered
+
+	for i := range s.Clients {
+		var kept []string
+		for _, e := range s.Clients[i].Entries {
+			if e != "netboot-xyz" {
+				kept = append(kept, e)
+			}
+		}
+		s.Clients[i].Entries = kept
 	}
 
 	switch s.NetbootMode {
@@ -308,6 +382,7 @@ func stepNetboot(s *WizardState) error {
 			Type:  "chain",
 			Chain: "https://boot.netboot.xyz",
 		})
+		addNetbootToClients(s)
 	case NetbootSelfHosted:
 		if err := Input("netboot.xyz download URL", DefaultNetbootBaseURL, &s.NetbootBaseURL, func(v string) error {
 			if v == "" {
@@ -325,9 +400,17 @@ func stepNetboot(s *WizardState) error {
 			HTTPPath:  "/netboot/",
 			HTTPFiles: "netboot/",
 		})
+		addNetbootToClients(s)
 	}
 
 	return nil
+}
+
+// addNetbootToClients appends "netboot-xyz" to every client's entries list.
+func addNetbootToClients(s *WizardState) {
+	for i := range s.Clients {
+		s.Clients[i].Entries = append(s.Clients[i].Entries, "netboot-xyz")
+	}
 }
 
 func stepMenus(s *WizardState) error {
@@ -354,30 +437,124 @@ func stepMenus(s *WizardState) error {
 }
 
 func stepMenusEdit(s *WizardState) error {
-	// Show existing menus.
-	fmt.Println("  Current menus:")
-	for _, m := range s.Menus {
-		fmt.Printf("    - %s (%s): %s\n", m.Name, m.Type, m.Label)
-	}
-	fmt.Println()
+	type menuAction string
+	const (
+		menuAdd    menuAction = "add"
+		menuEdit   menuAction = "edit"
+		menuRemove menuAction = "remove"
+		menuDone   menuAction = "done"
+	)
 
 	for {
-		add := false
-		if err := Confirm("Add another boot menu entry?", &add); err != nil {
-			return err
+		fmt.Println("  Current menus:")
+		for _, m := range s.Menus {
+			fmt.Printf("    - %s (%s): %s\n", m.Name, m.Type, m.Label)
 		}
-		if !add {
-			break
+		fmt.Println()
+
+		opts := []Option[menuAction]{
+			{Label: "Add new menu entry", Value: menuAdd},
+		}
+		if len(s.Menus) > 0 {
+			opts = append(opts,
+				Option[menuAction]{Label: "Edit existing menu entry", Value: menuEdit},
+				Option[menuAction]{Label: "Remove menu entry", Value: menuRemove},
+			)
+		}
+		opts = append(opts, Option[menuAction]{Label: "Done", Value: menuDone})
+
+		action := menuDone
+		if err := Select("What would you like to do?", opts, &action); err != nil {
+			return err
 		}
 
-		m, err := promptMenuEntry()
-		if err != nil {
-			return err
+		switch action {
+		case menuAdd:
+			m, err := promptMenuEntry()
+			if err != nil {
+				return err
+			}
+			s.Menus = append(s.Menus, m)
+
+		case menuEdit:
+			menuOpts := make([]Option[int], len(s.Menus))
+			for i, m := range s.Menus {
+				menuOpts[i] = Option[int]{
+					Label: fmt.Sprintf("%s (%s): %s", m.Name, m.Type, m.Label),
+					Value: i,
+				}
+			}
+			idx := 0
+			if err := Select("Which menu entry to edit?", menuOpts, &idx); err != nil {
+				return err
+			}
+			oldName := s.Menus[idx].Name
+			if err := promptMenuEntryEdit(&s.Menus[idx]); err != nil {
+				return err
+			}
+			// Cascade name change to client references.
+			if newName := s.Menus[idx].Name; oldName != newName {
+				for i := range s.Clients {
+					for j, e := range s.Clients[i].Entries {
+						if e == oldName {
+							s.Clients[i].Entries[j] = newName
+						}
+					}
+					if s.Clients[i].Default == oldName {
+						s.Clients[i].Default = newName
+					}
+				}
+			}
+
+		case menuRemove:
+			var removeOpts []Option[int]
+			for i, m := range s.Menus {
+				if m.Name == "local-disk" {
+					continue
+				}
+				removeOpts = append(removeOpts, Option[int]{
+					Label: fmt.Sprintf("%s (%s): %s", m.Name, m.Type, m.Label),
+					Value: i,
+				})
+			}
+			if len(removeOpts) == 0 {
+				fmt.Println("  No removable menu entries (local-disk is protected).")
+				continue
+			}
+			idx := removeOpts[0].Value
+			if err := Select("Which menu entry to remove?", removeOpts, &idx); err != nil {
+				return err
+			}
+			removedName := s.Menus[idx].Name
+
+			confirm := false
+			if err := Confirm(fmt.Sprintf("Remove %q?", removedName), &confirm); err != nil {
+				return err
+			}
+			if !confirm {
+				continue
+			}
+
+			s.Menus = append(s.Menus[:idx], s.Menus[idx+1:]...)
+			for i := range s.Clients {
+				var kept []string
+				for _, e := range s.Clients[i].Entries {
+					if e != removedName {
+						kept = append(kept, e)
+					}
+				}
+				s.Clients[i].Entries = kept
+				if s.Clients[i].Default == removedName {
+					s.Clients[i].Default = ""
+				}
+			}
+			fmt.Printf("  Removed %q.\n", removedName)
+
+		case menuDone:
+			return nil
 		}
-		s.Menus = append(s.Menus, m)
+		fmt.Println()
 	}
-
-	return nil
 }
 
 func promptMenuEntry() (MenuState, error) {
@@ -443,6 +620,76 @@ func promptMenuEntry() (MenuState, error) {
 	return m, nil
 }
 
+// promptMenuEntryEdit edits a MenuState in-place with pre-filled prompts.
+func promptMenuEntryEdit(m *MenuState) error {
+	if err := Input("Menu name (slug)", m.Name, &m.Name, func(v string) error {
+		if v == "" {
+			return fmt.Errorf("name is required")
+		}
+		if strings.Contains(v, " ") {
+			return fmt.Errorf("name must not contain spaces")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := Input("Menu label (display text)", m.Label, &m.Label, func(v string) error {
+		if v == "" {
+			return fmt.Errorf("label is required")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	typeOpts := []Option[string]{
+		{Label: "Install (full OS installation)", Value: "install"},
+		{Label: "Live (RAM-based live system)", Value: "live"},
+		{Label: "Tool (diagnostic/utility)", Value: "tool"},
+		{Label: "Chain (chainload external iPXE menu)", Value: "chain"},
+		{Label: "Exit (boot from local disk)", Value: "exit"},
+	}
+	if err := Select("Menu type", typeOpts, &m.Type); err != nil {
+		return err
+	}
+
+	if m.Type == "chain" {
+		if err := Input("Chain URL", m.Chain, &m.Chain, func(v string) error {
+			if v == "" {
+				return fmt.Errorf("chain URL is required")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		m.Kernel = ""
+		m.Initrd = ""
+		m.Cmdline = ""
+	} else if m.Type != "exit" {
+		if err := Input("Kernel filename", m.Kernel, &m.Kernel, nil); err != nil {
+			return err
+		}
+		if err := Input("Initrd filename", m.Initrd, &m.Initrd, nil); err != nil {
+			return err
+		}
+		if err := Input("Kernel command line (optional)", m.Cmdline, &m.Cmdline, nil); err != nil {
+			return err
+		}
+		if err := Input("HTTP path prefix (e.g. /installers/ubuntu/)", m.HTTPPath, &m.HTTPPath, nil); err != nil {
+			return err
+		}
+		m.Chain = ""
+	} else {
+		m.Kernel = ""
+		m.Initrd = ""
+		m.Cmdline = ""
+		m.Chain = ""
+	}
+
+	return nil
+}
+
 func stepClients(s *WizardState) error {
 	// Wildcard client is always included. Configure its menu entries.
 	fmt.Println("  Default client (wildcard *) is always included.")
@@ -483,40 +730,118 @@ func stepClients(s *WizardState) error {
 }
 
 func stepClientsEdit(s *WizardState) error {
-	fmt.Println("  Current clients:")
-	for _, c := range s.Clients {
-		fmt.Printf("    - %s (%s): menus=%v\n", c.Name, c.MAC, c.Entries)
-	}
-	fmt.Println()
-
-	menuNames := s.MenuNames()
-	menuOpts := make([]Option[string], len(menuNames))
-	for i, n := range menuNames {
-		menuOpts[i] = Option[string]{Label: n, Value: n}
-	}
+	type clientAction string
+	const (
+		clientAdd    clientAction = "add"
+		clientEdit   clientAction = "edit"
+		clientRemove clientAction = "remove"
+		clientDone   clientAction = "done"
+	)
 
 	for {
-		add := false
-		if err := Confirm("Add another client?", &add); err != nil {
-			return err
+		fmt.Println("  Current clients:")
+		for _, c := range s.Clients {
+			defStr := ""
+			if c.Default != "" {
+				defStr = fmt.Sprintf(", default=%s", c.Default)
+			}
+			fmt.Printf("    - %s (%s): menus=%v%s\n", c.Name, c.MAC, c.Entries, defStr)
 		}
-		if !add {
-			break
+		fmt.Println()
+
+		menuNames := s.MenuNames()
+		menuOpts := make([]Option[string], len(menuNames))
+		for i, n := range menuNames {
+			menuOpts[i] = Option[string]{Label: n, Value: n}
 		}
 
-		c, err := promptClient(menuOpts)
-		if err != nil {
+		// Check if there are non-wildcard clients for remove.
+		hasSpecific := false
+		for _, c := range s.Clients {
+			if c.MAC != "*" {
+				hasSpecific = true
+				break
+			}
+		}
+
+		opts := []Option[clientAction]{
+			{Label: "Add new client", Value: clientAdd},
+		}
+		if len(s.Clients) > 0 {
+			opts = append(opts, Option[clientAction]{Label: "Edit existing client", Value: clientEdit})
+		}
+		if hasSpecific {
+			opts = append(opts, Option[clientAction]{Label: "Remove client", Value: clientRemove})
+		}
+		opts = append(opts, Option[clientAction]{Label: "Done", Value: clientDone})
+
+		action := clientDone
+		if err := Select("What would you like to do?", opts, &action); err != nil {
 			return err
 		}
-		// Insert before wildcard if it exists.
-		if len(s.Clients) > 0 && s.Clients[len(s.Clients)-1].MAC == "*" {
-			s.Clients = append(s.Clients[:len(s.Clients)-1], c, s.Clients[len(s.Clients)-1])
-		} else {
-			s.Clients = append(s.Clients, c)
+
+		switch action {
+		case clientAdd:
+			c, err := promptClient(menuOpts)
+			if err != nil {
+				return err
+			}
+			if len(s.Clients) > 0 && s.Clients[len(s.Clients)-1].MAC == "*" {
+				s.Clients = append(s.Clients[:len(s.Clients)-1], c, s.Clients[len(s.Clients)-1])
+			} else {
+				s.Clients = append(s.Clients, c)
+			}
+
+		case clientEdit:
+			clientOpts := make([]Option[int], len(s.Clients))
+			for i, c := range s.Clients {
+				clientOpts[i] = Option[int]{
+					Label: fmt.Sprintf("%s (%s)", c.Name, c.MAC),
+					Value: i,
+				}
+			}
+			idx := 0
+			if err := Select("Which client to edit?", clientOpts, &idx); err != nil {
+				return err
+			}
+			if err := promptClientEdit(&s.Clients[idx], menuOpts); err != nil {
+				return err
+			}
+
+		case clientRemove:
+			var removeOpts []Option[int]
+			for i, c := range s.Clients {
+				if c.MAC == "*" {
+					continue
+				}
+				removeOpts = append(removeOpts, Option[int]{
+					Label: fmt.Sprintf("%s (%s)", c.Name, c.MAC),
+					Value: i,
+				})
+			}
+			if len(removeOpts) == 0 {
+				fmt.Println("  No removable clients (wildcard is protected).")
+				continue
+			}
+			idx := removeOpts[0].Value
+			if err := Select("Which client to remove?", removeOpts, &idx); err != nil {
+				return err
+			}
+			confirm := false
+			if err := Confirm(fmt.Sprintf("Remove %q (%s)?", s.Clients[idx].Name, s.Clients[idx].MAC), &confirm); err != nil {
+				return err
+			}
+			if !confirm {
+				continue
+			}
+			s.Clients = append(s.Clients[:idx], s.Clients[idx+1:]...)
+			fmt.Println("  Removed client.")
+
+		case clientDone:
+			return nil
 		}
+		fmt.Println()
 	}
-
-	return nil
 }
 
 func promptClient(menuOpts []Option[string]) (ClientState, error) {
@@ -570,6 +895,66 @@ func promptClient(menuOpts []Option[string]) (ClientState, error) {
 	}
 
 	return c, nil
+}
+
+// promptClientEdit edits a ClientState in-place with pre-filled prompts.
+func promptClientEdit(c *ClientState, menuOpts []Option[string]) error {
+	fmt.Printf("  Editing client: %s (%s)\n\n", c.Name, c.MAC)
+
+	if err := Input("Hostname", c.Name, &c.Name, func(v string) error {
+		if v == "" {
+			return fmt.Errorf("hostname is required")
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := MultiSelect("Menu entries", menuOpts, &c.Entries); err != nil {
+		return err
+	}
+
+	if len(c.Entries) > 1 {
+		// Validate current default is still in entries.
+		found := false
+		for _, e := range c.Entries {
+			if e == c.Default {
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.Default = c.Entries[0]
+		}
+
+		defOpts := make([]Option[string], len(c.Entries))
+		for i, e := range c.Entries {
+			defOpts[i] = Option[string]{Label: e, Value: e}
+		}
+		if err := Select("Default boot entry", defOpts, &c.Default); err != nil {
+			return err
+		}
+
+		timeoutStr := strconv.Itoa(c.Timeout)
+		if err := Input("Boot timeout (seconds, 0 = wait forever)", timeoutStr, &timeoutStr, func(v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("must be a number")
+			}
+			if n < 0 {
+				return fmt.Errorf("must not be negative")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		c.Timeout, _ = strconv.Atoi(timeoutStr)
+	} else {
+		c.Default = ""
+		c.Timeout = 0
+	}
+
+	return nil
 }
 
 func stepSummary(s *WizardState) error {
