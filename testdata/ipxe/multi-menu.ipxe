@@ -7,6 +7,7 @@ item ubuntu-install Ubuntu 24.04
 item local-disk Boot from local disk
 
 choose --default rescue --timeout 30000 selected || goto failed
+goto ${selected}
 
 :rescue
 kernel http://192.168.1.10:8080/tools/rescue/vmlinuz boot=live

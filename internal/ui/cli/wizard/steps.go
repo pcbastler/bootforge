@@ -201,6 +201,15 @@ func stepBootloader(s *WizardState) error {
 		return nil
 	}
 
+	// Select iPXE build variant.
+	variantOpts := []Option[IPXEVariant]{
+		{Label: "Full (recommended, better hardware support)", Value: IPXEVariantFull},
+		{Label: "SNP Only (minimal, smaller download)", Value: IPXEVariantSNPOnly},
+	}
+	if err := Select("iPXE build variant", variantOpts, &s.IPXEVariant); err != nil {
+		return err
+	}
+
 	// Select architectures.
 	archOpts := []Option[string]{
 		{Label: "UEFI x64", Value: "uefi_x64"},

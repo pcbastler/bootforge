@@ -40,14 +40,46 @@ func (mc *MenuConfig) Validate() error {
 	return nil
 }
 
+// BootloaderOverride allows a client to use different bootloader files
+// than the global [bootloader] config. Only non-empty fields override.
+type BootloaderOverride struct {
+	UEFX64 string // override UEFI x64 bootloader filename
+	UEFX86 string // override UEFI x86 bootloader filename
+	BIOS   string // override BIOS bootloader filename
+	ARM64  string // override ARM64 bootloader filename
+}
+
+// FileForArch returns the override filename for the given architecture,
+// or empty string if no override is set.
+func (o *BootloaderOverride) FileForArch(arch ClientArch) string {
+	switch arch {
+	case ArchUEFIx64:
+		return o.UEFX64
+	case ArchUEFIx86:
+		return o.UEFX86
+	case ArchBIOS:
+		return o.BIOS
+	case ArchARM64:
+		return o.ARM64
+	default:
+		return ""
+	}
+}
+
+// IsEmpty returns true if no overrides are set.
+func (o *BootloaderOverride) IsEmpty() bool {
+	return o.UEFX64 == "" && o.UEFX86 == "" && o.BIOS == "" && o.ARM64 == ""
+}
+
 // Client represents a PXE client identified by its MAC address.
 type Client struct {
-	MAC        net.HardwareAddr // unique identifier (or WildcardMAC for default)
-	Name       string           // human-readable name
-	Menu       MenuConfig       // which menu entries this client gets
-	Vars       map[string]string // template variables for preseed/kickstart
-	Enabled    bool             // whether this client is active
-	SourceFile string           // which .toml file defined this client
+	MAC        net.HardwareAddr   // unique identifier (or WildcardMAC for default)
+	Name       string             // human-readable name
+	Menu       MenuConfig         // which menu entries this client gets
+	Bootloader *BootloaderOverride // per-client bootloader overrides (nil = use global)
+	Vars       map[string]string  // template variables for preseed/kickstart
+	Enabled    bool               // whether this client is active
+	SourceFile string             // which .toml file defined this client
 }
 
 // IsWildcard returns true if this client is the default/fallback client.

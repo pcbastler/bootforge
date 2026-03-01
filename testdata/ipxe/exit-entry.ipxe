@@ -5,6 +5,7 @@ menu Bootforge Boot Menu
 item local-disk Boot from local disk
 
 choose selected || goto failed
+goto ${selected}
 
 :local-disk
 exit 0
