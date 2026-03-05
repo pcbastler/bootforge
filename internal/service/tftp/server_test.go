@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -165,6 +166,91 @@ func TestTFTPConcurrentReads(t *testing.T) {
 		}
 	}
 	wg.Wait()
+}
+
+func TestTFTPAutoexecDynamic(t *testing.T) {
+	addr, _, cleanup := startTestServerWithAutoexec(t)
+	defer cleanup()
+
+	data, err := tftpRead(addr, "autoexec.ipxe")
+	if err != nil {
+		t.Fatalf("TFTP read autoexec.ipxe: %v", err)
+	}
+
+	script := string(data)
+	if !strings.HasPrefix(script, "#!ipxe\n") {
+		t.Errorf("autoexec.ipxe should start with #!ipxe shebang, got: %s", script)
+	}
+	if !strings.Contains(script, "chain --autofree") {
+		t.Errorf("autoexec.ipxe should contain chain command, got: %s", script)
+	}
+	if !strings.Contains(script, "192.168.1.10:8080") {
+		t.Errorf("autoexec.ipxe should contain resolved server IP and port, got: %s", script)
+	}
+	if !strings.Contains(script, "${net0/mac}") {
+		t.Errorf("autoexec.ipxe should use iPXE ${net0/mac} variable, got: %s", script)
+	}
+}
+
+func TestTFTPAutoexecNotConfigured(t *testing.T) {
+	addr, _, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// Without autoexec config, autoexec.ipxe should not be found.
+	_, err := tftpRead(addr, "autoexec.ipxe")
+	if err == nil {
+		t.Error("autoexec.ipxe should fail when not configured")
+	}
+}
+
+func startTestServerWithAutoexec(t *testing.T) (addr string, dataDir string, cleanup func()) {
+	t.Helper()
+
+	dataDir = t.TempDir()
+	blDir := filepath.Join(dataDir, "bootloader")
+	os.MkdirAll(blDir, 0755)
+
+	files := map[string]string{
+		"ipxe.efi":     "UEFI-X64-BOOTLOADER",
+		"undionly.kpxe": "BIOS-BOOTLOADER",
+	}
+	for name, content := range files {
+		os.WriteFile(filepath.Join(blDir, name), []byte(content), 0644)
+	}
+
+	cfg := domain.TFTPConfig{
+		Enabled:   true,
+		Port:      0,
+		Timeout:   5 * time.Second,
+		BlockSize: 512,
+	}
+
+	srv := NewTFTPServer(cfg, dataDir, "bootloader", slog.Default())
+	srv.SetAutoexec(AutoexecConfig{
+		ServerIP: "192.168.1.10",
+		HTTPPort: 8080,
+		ChainURL: "http://${server_ip}:${http_port}/boot/${mac}/menu.ipxe",
+	})
+
+	conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listening: %v", err)
+	}
+
+	actualAddr := conn.LocalAddr().String()
+	srv.server = tftp.NewServer(srv.readHandler, nil)
+	srv.server.SetTimeout(cfg.Timeout)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		srv.server.Serve(conn)
+	}()
+
+	return actualAddr, dataDir, func() {
+		cancel()
+		srv.server.Shutdown()
+		_ = ctx
+	}
 }
 
 // tftpRead performs a TFTP read request and returns the file contents.

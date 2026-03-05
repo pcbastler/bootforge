@@ -1,0 +1,3 @@
+#!ipxe
+
+chain --autofree https://boot.netboot.xyz || goto failed

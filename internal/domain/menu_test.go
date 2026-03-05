@@ -15,6 +15,7 @@ func TestParseMenuType(t *testing.T) {
 		{"live lowercase", "live", MenuLive, false},
 		{"tool lowercase", "tool", MenuTool, false},
 		{"exit lowercase", "exit", MenuExit, false},
+		{"chain lowercase", "chain", MenuChain, false},
 		{"install uppercase", "INSTALL", MenuInstall, false},
 		{"mixed case", "Install", MenuInstall, false},
 		{"exit mixed", "Exit", MenuExit, false},
@@ -47,6 +48,7 @@ func TestMenuTypeString(t *testing.T) {
 		{MenuLive, "live"},
 		{MenuTool, "tool"},
 		{MenuExit, "exit"},
+		{MenuChain, "chain"},
 		{MenuType(99), "MenuType(99)"},
 	}
 
@@ -148,6 +150,25 @@ func TestMenuEntryValidate(t *testing.T) {
 				Name:  "bad",
 				Label: "Bad",
 				Type:  MenuTool,
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid chain entry",
+			entry: MenuEntry{
+				Name:  "netboot-xyz",
+				Label: "netboot.xyz",
+				Type:  MenuChain,
+				Boot:  BootParams{Chain: "https://boot.netboot.xyz"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "chain without URL",
+			entry: MenuEntry{
+				Name:  "bad-chain",
+				Label: "Bad Chain",
+				Type:  MenuChain,
 			},
 			wantErr: true,
 		},

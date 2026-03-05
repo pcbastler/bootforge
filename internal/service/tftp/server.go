@@ -16,15 +16,25 @@ import (
 	"github.com/pin/tftp/v3"
 )
 
+// AutoexecConfig holds the parameters needed to generate autoexec.ipxe dynamically.
+// When set, TFTP requests for "autoexec.ipxe" return a generated script that chains
+// to the HTTP boot menu using iPXE's built-in ${net0/mac} variable.
+type AutoexecConfig struct {
+	ServerIP string
+	HTTPPort int
+	ChainURL string // template with ${server_ip}, ${http_port}, ${mac} placeholders
+}
+
 // TFTPServer serves bootloader files via TFTP.
 // Only files within the configured bootloader directory are served.
 type TFTPServer struct {
-	cfg     domain.TFTPConfig
-	dataDir string // absolute path to data directory
-	blDir   string // bootloader subdirectory (relative to dataDir)
-	logger  *slog.Logger
-	server  *tftp.Server
-	cancel  context.CancelFunc
+	cfg       domain.TFTPConfig
+	dataDir   string // absolute path to data directory
+	blDir     string // bootloader subdirectory (relative to dataDir)
+	autoexec  *AutoexecConfig
+	logger    *slog.Logger
+	server    *tftp.Server
+	cancel    context.CancelFunc
 }
 
 // NewTFTPServer creates a new TFTP server.
@@ -35,6 +45,11 @@ func NewTFTPServer(cfg domain.TFTPConfig, dataDir string, blDir string, logger *
 		blDir:   blDir,
 		logger:  logger,
 	}
+}
+
+// SetAutoexec configures dynamic autoexec.ipxe generation.
+func (s *TFTPServer) SetAutoexec(cfg AutoexecConfig) {
+	s.autoexec = &cfg
 }
 
 // Name returns the service name.
@@ -92,6 +107,11 @@ func (s *TFTPServer) ReadHandler() func(string, io.ReaderFrom) error {
 
 // readHandler serves TFTP read requests.
 func (s *TFTPServer) readHandler(filename string, rf io.ReaderFrom) error {
+	// Dynamic autoexec.ipxe generation.
+	if s.autoexec != nil && filepath.Clean(filename) == "autoexec.ipxe" {
+		return s.serveAutoexec(rf)
+	}
+
 	// Resolve the full path and ensure it's within the bootloader directory.
 	fullPath, err := s.resolvePath(filename)
 	if err != nil {
@@ -129,6 +149,33 @@ func (s *TFTPServer) readHandler(filename string, rf io.ReaderFrom) error {
 		"filename", filename,
 		"bytes", n,
 	)
+	return nil
+}
+
+// serveAutoexec generates a dynamic autoexec.ipxe script that chains to the
+// HTTP boot menu. Uses iPXE's built-in ${net0/mac} variable so the TFTP server
+// doesn't need to know the client's MAC address.
+func (s *TFTPServer) serveAutoexec(rf io.ReaderFrom) error {
+	chainURL := s.autoexec.ChainURL
+	chainURL = strings.ReplaceAll(chainURL, "${server_ip}", s.autoexec.ServerIP)
+	chainURL = strings.ReplaceAll(chainURL, "${http_port}", fmt.Sprintf("%d", s.autoexec.HTTPPort))
+	// Replace ${mac} with iPXE's runtime variable for the client's MAC address.
+	chainURL = strings.ReplaceAll(chainURL, "${mac}", "${net0/mac}")
+
+	script := "#!ipxe\nchain --autofree " + chainURL + "\n"
+
+	reader := strings.NewReader(script)
+	rf.(tftp.OutgoingTransfer).SetSize(int64(len(script)))
+
+	s.logger.Info("TFTP serving dynamic autoexec.ipxe", "chain_url", chainURL)
+
+	n, err := rf.ReadFrom(reader)
+	if err != nil {
+		s.logger.Error("TFTP autoexec transfer failed", "error", err)
+		return err
+	}
+
+	s.logger.Debug("TFTP autoexec transfer complete", "bytes", n)
 	return nil
 }
 

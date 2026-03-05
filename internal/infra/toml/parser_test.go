@@ -239,6 +239,36 @@ this is broken`)
 	}
 }
 
+func TestParseFileChainMenu(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "test.toml", `
+[[menu]]
+name = "netboot-xyz"
+label = "netboot.xyz"
+type = "chain"
+
+[menu.boot]
+chain = "https://boot.netboot.xyz"
+`)
+
+	result, err := parseFile(filepath.Join(dir, "test.toml"))
+	if err != nil {
+		t.Fatalf("parseFile() error = %v", err)
+	}
+
+	if len(result.menus) != 1 {
+		t.Fatalf("expected 1 menu, got %d", len(result.menus))
+	}
+
+	m := result.menus[0]
+	if m.Type != domain.MenuChain {
+		t.Errorf("Type = %v, want MenuChain", m.Type)
+	}
+	if m.Boot.Chain != "https://boot.netboot.xyz" {
+		t.Errorf("Boot.Chain = %q, want %q", m.Boot.Chain, "https://boot.netboot.xyz")
+	}
+}
+
 func TestParseFileInvalidMenuType(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "test.toml", `

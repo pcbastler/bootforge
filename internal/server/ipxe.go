@@ -77,6 +77,9 @@ func (g *IPXEGenerator) writeMenu(b *strings.Builder, entries []*domain.MenuEntr
 		b.WriteString(fmt.Sprintf("\n:%s\n", entry.Name))
 		if entry.Type == domain.MenuExit {
 			b.WriteString("exit 0\n")
+		} else if entry.Boot.Chain != "" {
+			url := g.substituteVars(entry.Boot.Chain, vars)
+			b.WriteString(fmt.Sprintf("chain --autofree %s || goto start\n", url))
 		} else {
 			g.writeBootEntry(b, entry, vars)
 		}
@@ -93,6 +96,13 @@ func (g *IPXEGenerator) writeBootEntry(b *strings.Builder, entry *domain.MenuEnt
 	// Special loader (e.g. wimboot for Windows).
 	if entry.Boot.Loader == "wimboot" {
 		g.writeWimboot(b, entry, vars)
+		return
+	}
+
+	// Chain boot (e.g. netboot.xyz).
+	if entry.Boot.Chain != "" {
+		url := g.substituteVars(entry.Boot.Chain, vars)
+		b.WriteString(fmt.Sprintf("chain --autofree %s || goto failed\n", url))
 		return
 	}
 

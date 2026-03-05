@@ -103,6 +103,7 @@ type rawBoot struct {
 	Files   []string `toml:"files"`
 	Binary  string   `toml:"binary"`
 	Image   string   `toml:"image"`
+	Chain   string   `toml:"chain"`
 }
 
 type rawClient struct {
@@ -330,6 +331,7 @@ func convertMenu(raw *rawMenu, sourceFile string) (*domain.MenuEntry, error) {
 			Files:   raw.Boot.Files,
 			Binary:  raw.Boot.Binary,
 			Image:   raw.Boot.Image,
+			Chain:   raw.Boot.Chain,
 		}
 	}
 

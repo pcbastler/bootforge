@@ -15,6 +15,7 @@ const (
 	MenuLive                    // RAM-based live system
 	MenuTool                    // Diagnostic / utility tool
 	MenuExit                    // Return to local disk boot
+	MenuChain                   // Chainload external iPXE endpoint
 )
 
 var menuTypeNames = map[MenuType]string{
@@ -22,6 +23,7 @@ var menuTypeNames = map[MenuType]string{
 	MenuLive:    "live",
 	MenuTool:    "tool",
 	MenuExit:    "exit",
+	MenuChain:   "chain",
 }
 
 var menuTypeValues = map[string]MenuType{
@@ -29,6 +31,7 @@ var menuTypeValues = map[string]MenuType{
 	"live":    MenuLive,
 	"tool":    MenuTool,
 	"exit":    MenuExit,
+	"chain":   MenuChain,
 }
 
 func (t MenuType) String() string {
@@ -62,6 +65,7 @@ type BootParams struct {
 	Files   []string // additional files for wimboot
 	Binary  string   // single binary to boot (e.g. memtest)
 	Image   string   // ISO/disk image
+	Chain   string   // URL to chainload (e.g. netboot.xyz)
 }
 
 // MenuEntry is a global boot option (e.g. "ubuntu-install", "rescue", "local-disk").
@@ -95,6 +99,10 @@ func (e *MenuEntry) Validate() error {
 		}
 	case MenuExit:
 		// exit entries need no boot params
+	case MenuChain:
+		if e.Boot.Chain == "" {
+			return fmt.Errorf("menu entry %q: chain URL is required for type %s", e.Name, e.Type)
+		}
 	default:
 		return fmt.Errorf("menu entry %q: unknown type %d", e.Name, int(e.Type))
 	}

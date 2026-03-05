@@ -63,9 +63,16 @@ func LoadDir(dir string) (*domain.FullConfig, error) {
 }
 
 // resolvePaths resolves relative paths in the config against baseDir.
+// The result is always an absolute path so that makeRelative in the writer
+// can correctly convert it back when saving.
 func resolvePaths(cfg *domain.FullConfig, baseDir string) {
 	if cfg.Server.DataDir != "" && !filepath.IsAbs(cfg.Server.DataDir) {
-		cfg.Server.DataDir = filepath.Join(baseDir, cfg.Server.DataDir)
+		joined := filepath.Join(baseDir, cfg.Server.DataDir)
+		if abs, err := filepath.Abs(joined); err == nil {
+			cfg.Server.DataDir = abs
+		} else {
+			cfg.Server.DataDir = joined
+		}
 	}
 }
 
