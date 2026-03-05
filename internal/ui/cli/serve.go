@@ -121,6 +121,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Start TFTP server.
 	if cfg.TFTP.Enabled {
 		tftpSrv := tftpsvc.NewTFTPServer(cfg.TFTP, cfg.Server.DataDir, cfg.Bootloader.Dir, logger)
+		if cfg.HTTP.Enabled && cfg.Bootloader.ChainURL != "" {
+			tftpSrv.SetAutoexec(tftpsvc.AutoexecConfig{
+				ServerIP: serverIP,
+				HTTPPort: cfg.HTTP.Port,
+				ChainURL: cfg.Bootloader.ChainURL,
+			})
+		}
 		go func() {
 			if err := tftpSrv.Start(ctx); err != nil {
 				logger.Error("TFTP server failed", "error", err)
