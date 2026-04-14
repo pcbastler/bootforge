@@ -2,6 +2,15 @@
 
 **PXE Boot Server for automated network booting.** Single binary combining DHCP Proxy, TFTP, and HTTP into one cohesive tool. Auto-detects UEFI and BIOS clients, generates iPXE boot menus, and serves OS installers, live systems, and diagnostic tools over the network.
 
+> **Note:** This project is under active development. APIs may change without notice.
+
+> **Disclaimer:** This software is provided "as is", without warranty of any kind, express or
+> implied, including but not limited to the warranties of merchantability, fitness for a particular
+> purpose, correctness, or completeness. This software may contain bugs that can destroy or
+> corrupt data, including virtual disk images, and may lead to complete data loss. Use at your own
+> risk. The author assumes no liability for any damages, including data loss, arising from the use
+> of this software.
+
 ---
 
 ## What Is Bootforge?
@@ -439,6 +448,10 @@ make check
 | Privileges | Root (for DHCP port 67, TFTP port 69) |
 | Network | Existing DHCP server on the same broadcast domain |
 | Files | iPXE bootloader binaries (downloadable via `bootforge init`) |
+
+## Development
+
+This project was developed with AI assistance.
 
 ## License
 
