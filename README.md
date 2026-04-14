@@ -6,10 +6,10 @@
 
 > **Disclaimer:** This software is provided "as is", without warranty of any kind, express or
 > implied, including but not limited to the warranties of merchantability, fitness for a particular
-> purpose, correctness, or completeness. This software may contain bugs that can destroy or
-> corrupt data, including virtual disk images, and may lead to complete data loss. Use at your own
-> risk. The author assumes no liability for any damages, including data loss, arising from the use
-> of this software.
+> purpose, correctness, or completeness. This software interacts with low-level network services
+> (DHCP, TFTP, PXE) and may interfere with existing network infrastructure or cause unintended
+> boot behavior on connected machines. Use at your own risk. The author assumes no liability for
+> any damages arising from the use of this software.
 
 ---
 
