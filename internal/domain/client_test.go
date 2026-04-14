@@ -22,7 +22,8 @@ func TestParseMAC(t *testing.T) {
 		{"wildcard with spaces", " * ", "wildcard", false},
 		{"too short", "aa:bb:cc", "", true},
 		{"invalid hex", "gg:hh:ii:jj:kk:ll", "", true},
-		{"no separators", "aabbccddeeff", "", true},
+		{"no separators", "aabbccddeeff", "aa:bb:cc:dd:ee:ff", false},
+		{"no separators too short", "aabbccdd", "", true},
 		{"partial", "aa:bb:", "", true},
 	}
 
