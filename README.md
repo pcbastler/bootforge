@@ -35,7 +35,7 @@ All of this happens without touching your existing DHCP server. Bootforge runs a
 - **Define a default menu** for unknown machines using a wildcard client
 - **Monitor boot sessions** in real-time through the REST API
 - **Run health checks** to verify bootloader files, disk space, and service availability
-- **Wake machines remotely** via Wake-on-LAN
+- **Wake machines remotely** via Wake-on-LAN (library included, CLI integration planned)
 
 ## How It Works
 
@@ -282,6 +282,7 @@ bootforge init [--dir PATH]                  # Interactive setup wizard
 bootforge validate [--config PATH]           # Check config without starting
 bootforge status                             # Query running server
 bootforge precheck [--config PATH]           # Run pre-flight health checks
+bootforge edit                               # Edit config interactively
 
 bootforge client list                        # List all clients
 bootforge client show <mac>                  # Show client details
@@ -295,9 +296,9 @@ bootforge bootloader check                   # Verify bootloader files exist
 bootforge session list                       # List active boot sessions
 bootforge session show <mac>                 # Show session details
 
-bootforge logs [--follow] [--level LEVEL]    # View server logs
+bootforge logs [--level LEVEL]               # View server logs
 bootforge config show                        # Show current configuration
-bootforge edit                               # Open config in editor
+bootforge test                               # Run health checks on-demand
 bootforge version                            # Print version info
 ```
 
@@ -312,12 +313,11 @@ All endpoints are served on the HTTP port (default 8080) under `/api/v1/`.
 | GET | `/api/v1/status` | Server status and health |
 | GET | `/api/v1/clients` | List all clients |
 | GET | `/api/v1/clients/{mac}` | Client details |
-| POST | `/api/v1/clients/{mac}/wake` | Send Wake-on-LAN packet |
 | GET | `/api/v1/menus` | List all menu entries |
 | GET | `/api/v1/sessions` | Active boot sessions |
 | POST | `/api/v1/reload` | Hot-reload configuration |
 | POST | `/api/v1/test` | Run health checks |
-| GET | `/api/v1/logs` | Recent log entries |
+| GET | `/api/v1/logs` | Recent log entries (supports `?mac=`, `?service=`, `?limit=`) |
 | GET | `/healthz` | Health check endpoint |
 
 Boot endpoints (called by iPXE, not for human use):
@@ -448,6 +448,10 @@ make check
 | Privileges | Root (for DHCP port 67, TFTP port 69) |
 | Network | Existing DHCP server on the same broadcast domain |
 | Files | iPXE bootloader binaries (downloadable via `bootforge init`) |
+
+## Roadmap
+
+See [TODO.md](TODO.md) for planned features, including additional CLI commands, extended API endpoints, WebSocket streaming, and a web UI.
 
 ## Development
 
